@@ -1,0 +1,7 @@
+*.pyc
+.vscode/*
+*.txt
+*.csv
+*.png
+*.pkl
+
