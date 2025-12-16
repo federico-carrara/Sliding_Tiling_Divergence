@@ -1,10 +1,17 @@
 # analysis_utils.py
+"""
+Generalized analysis utilities for comparing multiple (N>2) prediction methods.
+Supports comparing 2-5 input images/methods side-by-side.
+"""
+
 import os
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
-from usplit.core.psnr import RangeInvariantPsnr as psnr
-from utils.gradient_utils import GradientUtils
+# from usplit.core.psnr import RangeInvariantPsnr as psnr
+
+from utils.gradient_utils import GradientUtils2D as GradientUtils
+
 from utils.plot_utils import (
     plot_multiple_hist,
     plot_multiple_bar,
@@ -13,430 +20,334 @@ from utils.plot_utils import (
     compute_kl_matrix,
     plot_multiple_boxplots
 )
-from typing import Dict, Tuple, Any
-# -------------------------------
-# Basic metric utilities
-# -------------------------------
+from typing import Dict, Tuple, Any, List
+
+# ===============================================
+# Basic Metrics
+# ===============================================
 
 
-def compute_psnr(pred1, pred2):
-    """Compute PSNR between two numpy arrays."""
-    return psnr(pred1, pred2, data_range=pred1.max() - pred1.min())
 
-def compute_peakiness(hist, bin_edges):
+def compute_peakiness(hist):
     """
-    Calculates the 'peakiness' of a histogram, defined as the sum of the top 10% bin masses after normalization.
-
-    Parameters:
-        hist (array-like): The histogram bin counts.
-        bin_edges (array-like): The edges of the histogram bins (unused in calculation).
-
-    Returns:
-        float: The sum of the top 10% normalized bin masses, representing the histogram's peakiness.
+    Calculate histogram 'peakiness': sum of top 10% bin masses after normalization.
+    Lower peakiness = better (smoother gradients).
     """
-    """Measure 'peakiness' of a histogram = ratio of top 10% bin mass to total."""
-
-
     hist = normalize_histogram(hist)
     sorted_vals = np.sort(hist)[::-1]
     top_frac = int(0.1 * len(sorted_vals))
     return np.sum(sorted_vals[:top_frac])
 
+# ===============================================
+# Multi-Method Gradient Analysis
+# ===============================================
 
-def summarize_gradients(
-    grad_utils_og: Any,
-    grad_utils_sw: Any,
+def summarize_gradients_multi(
+    grad_utils_list: List[Any],
+    method_names: List[str],
     num_bins: int,
     channel: int,
     save_dir: str | Path,
 ) -> None:
     """
-    Generate and save key gradient visualizations and metrics
-    comparing Original (OG) vs Sliding Window (SW) methods.
-
+    Generate gradient visualizations and metrics comparing N methods.
+    
     Args:
-        grad_utils_og: Gradient utility object for original method.
-        grad_utils_sw: Gradient utility object for sliding window method.
-        num_bins: Number of bins for histogram computation.
-        channel: Target channel index for KL divergence heatmap.
-        save_dir: Directory where plots and summaries will be saved.
+        grad_utils_list: List of gradient utility objects (one per method)
+        method_names: List of method names (e.g., ["OG", "SW", "Method3"])
+        num_bins: Number of bins for histograms
+        channel: Target channel index for analysis
+        save_dir: Directory to save outputs
     """
     os.makedirs(save_dir, exist_ok=True)
-
-    # === 1. Extract gradient arrays ===
-    grad_data = _extract_gradients(grad_utils_og, grad_utils_sw)
-
+    
+    n_methods = len(grad_utils_list)
+    assert len(method_names) == n_methods, "Number of names must match number of methods"
+    
+    # === 1. Extract gradients for all methods ===
+    grad_data = _extract_gradients_multi(grad_utils_list)
+    
     # === 2. Compute histograms ===
-    bin_edges, histograms = _compute_all_histograms(grad_data, num_bins)
+    bin_edges, histograms = _compute_histograms_multi(grad_data, num_bins, n_methods)
     
-    _plot_combined_histogram(histograms, bin_edges, grad_data, save_dir)
-
     # === 3. Plot visualizations ===
-    _plot_histograms(histograms, bin_edges, save_dir)
+    _plot_histograms_multi(histograms, bin_edges, method_names, save_dir)
+    _plot_combined_histogram_multi(histograms, bin_edges, grad_data, method_names, save_dir)
     
-    
-    # _plot_boxplots(grad_data, save_dir)
-
-    # _plot_bar_charts(histograms, bin_edges, save_dir)
-
     # === 4. KL Divergence Heatmaps ===
-    _plot_kl_heatmaps(grad_utils_og, grad_utils_sw, bin_edges, channel, save_dir)
-
+    _plot_kl_heatmaps_multi(grad_utils_list, bin_edges, method_names, channel, save_dir)
+    
     # === 5. Compute and write metrics summary ===
-    _write_summary(histograms, save_dir)
+    _write_summary_multi(histograms, method_names, save_dir)
 
+# ===============================================
+# Helper: Extract Gradients for N Methods
+# ===============================================
 
-# ---------------------------------------------------------------------
-# Helper functions
-# ---------------------------------------------------------------------
-
-def _extract_gradients(
-    grad_utils_og: Any,
-    grad_utils_sw: Any
-) -> Dict[str, np.ndarray]:
+def _extract_gradients_multi(grad_utils_list: List[Any]) -> Dict[str, np.ndarray]:
     """
-    Extract edge and middle gradients from both OG and SW gradient utilities.
-    
-    Returns:
-        Dictionary of gradient arrays (both raw and normalized).
+    Extract edge and middle gradients from all methods.
+    Returns dict with keys: "edge_0", "mid_0", "edge_1", "mid_1", etc.
     """
-    # Raw gradients (unnormalized)
-    grad_edge_og_raw = grad_utils_og.grad_edges
-    grad_mid_og_raw = grad_utils_og.grad_middle
-    grad_edge_sw_raw = grad_utils_sw.grad_edges
-    grad_mid_sw_raw = grad_utils_sw.grad_middle
+    grad_data = {}
+    mid_all_raw = []
     
-    # Normalized gradients (self-normalized)
-    grad_edge_og = grad_utils_og._normalize_gradients(grad_utils_og.grad_edges)
-    grad_mid_og = grad_utils_og._normalize_gradients(grad_utils_og.grad_middle)
-    grad_edge_sw = grad_utils_sw._normalize_gradients(grad_utils_sw.grad_edges)
-    grad_mid_sw = grad_utils_sw._normalize_gradients(grad_utils_sw.grad_middle)
+    for i, grad_utils in enumerate(grad_utils_list):
+        # Raw gradients
+        edge_raw = grad_utils.grad_edges
+        mid_raw = grad_utils.grad_middle
+        
+        # Normalized gradients
+        edge_norm = grad_utils._normalize_gradients(edge_raw)
+        mid_norm = grad_utils._normalize_gradients(mid_raw)
+        
+        grad_data[f"edge_{i}_raw"] = edge_raw
+        grad_data[f"mid_{i}_raw"] = mid_raw
+        grad_data[f"edge_{i}"] = edge_norm
+        grad_data[f"mid_{i}"] = mid_norm
+        
+        mid_all_raw.append(mid_raw)
     
-    grad_mid_combined = np.concatenate([grad_mid_og, grad_mid_sw])
+    # Combined middle gradients (all methods concatenated)
+    grad_data["mid_combined"] = np.concatenate(mid_all_raw)
     
-    return {
-        # Normalized
-        "edge_og": grad_edge_og,
-        "mid_og": grad_mid_og,
-        "edge_sw": grad_edge_sw,
-        "mid_sw": grad_mid_sw,
-        "mid_combined": grad_mid_combined,
-        # Raw (for re-normalization)
-        "edge_og_raw": grad_edge_og_raw,
-        "mid_og_raw": grad_mid_og_raw,
-        "edge_sw_raw": grad_edge_sw_raw,
-        "mid_sw_raw": grad_mid_sw_raw,
-    }
+    return grad_data
 
+# ===============================================
+# Helper: Compute Histograms for N Methods
+# ===============================================
 
-
-def _compute_all_histograms(
+def _compute_histograms_multi(
     grad_data: Dict[str, np.ndarray],
-    num_bins: int
+    num_bins: int,
+    n_methods: int
 ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
     """
-    Compute bin edges and histograms for all gradient sets.
-
-    Returns:
-        bin_edges: Computed histogram bin edges.
-        hists: Dictionary of computed histograms.
+    Compute bin edges and histograms for all methods.
     """
-    bin_edges = GradientUtils.get_bin_edges(
-        [grad_data["edge_og"], grad_data["edge_sw"],
-         grad_data["mid_og"], grad_data["mid_sw"]],
-        num_bins=num_bins,
-    )
-
-    hists = {
-        "edge_og": GradientUtils.compute_histograms(grad_data["edge_og"], bin_edges),
-        "mid_og": GradientUtils.compute_histograms(grad_data["mid_og"], bin_edges),
-        "edge_sw": GradientUtils.compute_histograms(grad_data["edge_sw"], bin_edges),
-        "mid_sw": GradientUtils.compute_histograms(grad_data["mid_sw"], bin_edges),
-        "mid_combined": GradientUtils.compute_histograms(grad_data["mid_combined"], bin_edges),
-    }
-
+    # Collect all gradients to determine bin edges
+    all_grads = [grad_data[f"mid_{i}"] for i in range(n_methods)]
+    all_grads.extend([grad_data[f"edge_{i}"] for i in range(n_methods)])
+    
+    bin_edges = GradientUtils.get_bin_edges(all_grads, num_bins=num_bins)
+    
+    hists = {}
+    for i in range(n_methods):
+        hists[f"edge_{i}"] = GradientUtils.compute_histograms(grad_data[f"edge_{i}"], bin_edges)
+        hists[f"mid_{i}"] = GradientUtils.compute_histograms(grad_data[f"mid_{i}"], bin_edges)
+    
+    hists["mid_combined"] = GradientUtils.compute_histograms(grad_data["mid_combined"], bin_edges)
+    
     return bin_edges, hists
 
+# ===============================================
+# Helper: Plot Histograms for N Methods
+# ===============================================
 
-def _plot_histograms(
+def _plot_histograms_multi(
     h: Dict[str, np.ndarray],
     bin_edges: np.ndarray,
+    method_names: List[str],
     save_dir: str | Path,
 ) -> None:
     """
-    Plot histogram comparisons for OG vs SW and save to disk.
+    Create histogram comparison plots for each method.
+    Layout: one subplot per method, showing edge vs middle gradients.
     """
-    fig, axs = plt.subplots(1, 3, figsize=(25, 5), sharey=True)
-
-    plot_multiple_hist(
-        axs[0],
-        histograms=[h["edge_og"], h["mid_og"]],
-        bin_edges=bin_edges,
-        labels=["Gradient at Edges", "Gradients at Middle of Tiles"],
-        colors=["blue", "black"],
-        title="Gradients of Original vs In the Middle of Tiles",
-        legend=True,
-    )
-
-    plot_multiple_hist(
-        axs[1],
-        histograms=[h["edge_sw"], h["mid_sw"]],
-        bin_edges=bin_edges,
-        labels=["Gradient at Edges", "Gradients at Middle of Tiles"],
-        colors=["red", "black"],
-        title="Gradients of SW vs In the Middle of Tiles",
-        legend=True,
-    )
-
-    plot_multiple_hist(
-        axs[2],
-        histograms=[h["edge_og"], h["edge_sw"], h["mid_combined"]],
-        bin_edges=bin_edges,
-        labels=[
-            "Gradient at Edges OG",
-            "Gradient at Edges SW",
-            "Combined Gradients in the Middle of Tiles",
-        ],
-        colors=["blue", "red", "black"],
-        title="Combined Gradients in the Middle of Tiles",
-        legend=True,
-    )
-
+    n_methods = len(method_names)
+    colors = ["blue", "red", "green", "orange", "purple"][:n_methods]
+    
+    fig, axs = plt.subplots(1, n_methods, figsize=(8 * n_methods, 4), sharey=True)
+    if n_methods == 1:
+        axs = [axs]
+    
+    for i, (ax, method_name, color) in enumerate(zip(axs, method_names, colors)):
+        plot_multiple_hist(
+            ax,
+            histograms=[h[f"edge_{i}"], h[f"mid_{i}"]],
+            bin_edges=bin_edges,
+            labels=[f"{method_name}: Edge", f"{method_name}: Middle"],
+            colors=[color, "black"],
+            title=f"{method_name} - Edge vs Middle Gradients",
+            legend=True,
+        )
+    
     plt.tight_layout()
-    fig.savefig(Path(save_dir) / "gradient_histograms_comparison.png", dpi=300, bbox_inches="tight")
+    fig.savefig(Path(save_dir) / "gradient_histograms_all_methods.png", dpi=300, bbox_inches="tight")
     plt.close(fig)
+    print(f"✅ Saved: gradient_histograms_all_methods.png")
 
-def _plot_combined_histogram(
+# ===============================================
+# Helper: Plot Combined Histograms for N Methods
+# ===============================================
+
+def _plot_combined_histogram_multi(
     h: Dict[str, np.ndarray],
     bin_edges: np.ndarray,
     grad_data: Dict[str, np.ndarray],
+    method_names: List[str],
     save_dir: str | Path,
 ) -> None:
     """
-    Plot histogram comparisons using both self-normalized and combined-normalized gradients.
+    Plot histograms using both self-normalized and combined-normalized gradients.
     """
-    # Compute mean and std from combined middle gradients (already normalized, so we use raw instead)
-    mid_combined_raw = np.concatenate([grad_data["mid_og_raw"], grad_data["mid_sw_raw"]])
+    n_methods = len(method_names)
+    colors = ["blue", "red", "green", "orange", "purple"][:n_methods]
+    
+    # Combined normalization stats
+    mid_combined_raw = grad_data["mid_combined"]
     mu_combined = mid_combined_raw.mean()
     sigma_combined = mid_combined_raw.std()
     
-    fig, axs = plt.subplots(2, 2, figsize=(20, 10))
+    # 2 rows: self-normalized and combined-normalized
+    fig, axs = plt.subplots(2, n_methods, figsize=(8 * n_methods, 8))
     
-    # Row 1: Self-normalized
-    plot_multiple_hist(
-        axs[0, 0],
-        histograms=[h["edge_og"], h["mid_og"]],
-        bin_edges=bin_edges,
-        labels=["Edge OG (self-norm)", "Middle OG (self-norm)"],
-        colors=["blue", "black"],
-        title="OG Method - Self Normalized",
-        legend=True,
-    )
-    
-    plot_multiple_hist(
-        axs[0, 1],
-        histograms=[h["edge_sw"], h["mid_sw"]],
-        bin_edges=bin_edges,
-        labels=["Edge SW (self-norm)", "Middle SW (self-norm)"],
-        colors=["red", "black"],
-        title="SW Method - Self Normalized",
-        legend=True,
-    )
-    
-    # Row 2: Combined-normalized (using raw gradients)
-    hist_edge_og_combined = GradientUtils.compute_histograms(
-        (grad_data["edge_og_raw"] - mu_combined) / (sigma_combined + 1e-8), bin_edges
-    )
-    hist_edge_sw_combined = GradientUtils.compute_histograms(
-        (grad_data["edge_sw_raw"] - mu_combined) / (sigma_combined + 1e-8), bin_edges
-    )
-    hist_mid_combined_norm = GradientUtils.compute_histograms(
-        (mid_combined_raw - mu_combined) / (sigma_combined + 1e-8), bin_edges
-    )
-    
-    plot_multiple_hist(
-        axs[1, 0],
-        histograms=[hist_edge_og_combined, hist_mid_combined_norm],
-        bin_edges=bin_edges,
-        labels=["Edge OG (combined-norm)", "Middle Combined (combined-norm)"],
-        colors=["blue", "black"],
-        title="OG Edges - Combined Normalized",
-        legend=True,
-    )
-    
-    plot_multiple_hist(
-        axs[1, 1],
-        histograms=[hist_edge_sw_combined, hist_mid_combined_norm],
-        bin_edges=bin_edges,
-        labels=["Edge SW (combined-norm)", "Middle Combined (combined-norm)"],
-        colors=["red", "black"],
-        title="SW Edges - Combined Normalized",
-        legend=True,
-    )
+    for i, (method_name, color) in enumerate(zip(method_names, colors)):
+        # Row 0: Self-normalized
+        plot_multiple_hist(
+            axs[0, i],
+            histograms=[h[f"edge_{i}"], h[f"mid_{i}"]],
+            bin_edges=bin_edges,
+            labels=[f"Edge (self-norm)", f"Middle (self-norm)"],
+            colors=[color, "black"],
+            title=f"{method_name} - Self Normalized",
+            legend=True,
+        )
+        
+        # Row 1: Combined-normalized
+        hist_edge_combined = GradientUtils.compute_histograms(
+            (grad_data[f"edge_{i}_raw"] - mu_combined) / (sigma_combined + 1e-8), bin_edges
+        )
+        hist_mid_combined = GradientUtils.compute_histograms(
+            (grad_data[f"mid_{i}_raw"] - mu_combined) / (sigma_combined + 1e-8), bin_edges
+        )
+        
+        plot_multiple_hist(
+            axs[1, i],
+            histograms=[hist_edge_combined, hist_mid_combined],
+            bin_edges=bin_edges,
+            labels=[f"Edge (combined-norm)", f"Middle (combined-norm)"],
+            colors=[color, "black"],
+            title=f"{method_name} - Combined Normalized",
+            legend=True,
+        )
     
     plt.tight_layout()
-    fig.savefig(Path(save_dir) / "gradient_histograms_combined_normalized.png", dpi=300, bbox_inches="tight")
+    fig.savefig(Path(save_dir) / "gradient_histograms_normalized_comparison.png", dpi=300, bbox_inches="tight")
     plt.close(fig)
+    print(f"✅ Saved: gradient_histograms_normalized_comparison.png")
 
+# ===============================================
+# Helper: KL Divergence Heatmaps for N Methods
+# ===============================================
 
-def _plot_boxplots(
-    grad_data: Dict[str, np.ndarray],
-    save_dir: str | Path,
-) -> None:
-    """
-    Generate boxplots comparing OG and SW gradient distributions.
-    """
-    fig, axs = plt.subplots(1, 2, figsize=(25, 5), sharey=True)
-
-    plot_multiple_boxplots(
-        axs=axs,
-        arrays_list=[
-            [grad_data["edge_og"], grad_data["mid_og"]],
-            [grad_data["mid_sw"], grad_data["edge_sw"]],
-        ],
-        labels_list=[
-            ["Gradient at Edges", "Gradients at Middle of Tiles"],
-            ["Gradients at Middle of Tiles", "Gradient at Edges"],
-        ],
-        colors_list=[
-            ["blue", "black"],
-            ["black", "red"],
-        ],
-        titles_list=[
-            "Gradients of Original vs In the Middle of Tiles",
-            "Gradients of SW vs In the Middle of Tiles",
-        ],
-    )
-
-    plt.tight_layout()
-    fig.savefig(Path(save_dir) / "gradient_boxplots_comparison.png", dpi=300, bbox_inches="tight")
-    plt.close(fig)
-
-
-def _plot_bar_charts(
-    h: Dict[str, np.ndarray],
+def _plot_kl_heatmaps_multi(
+    grad_utils_list: List[Any],
     bin_edges: np.ndarray,
-    save_dir: str | Path,
-) -> None:
-    """
-    Create bar chart comparisons between edge and middle gradients.
-    """
-    fig, ax = plt.subplots(4, 1, figsize=(17, 12))
-
-    plot_multiple_bar(
-        ax[0], [h["edge_sw"], h["mid_sw"]],
-        ["SW: Edge of Tiles", "SW: Middle of Tiles"],
-        ["red", "black"],
-        "Sliding Window Gradients: Edge vs Middle",
-        25, bin_edges[:-1],
-    )
-
-    plot_multiple_bar(
-        ax[1], [h["edge_og"], h["mid_og"]],
-        ["OG: Edge of Tiles", "OG: Middle of Tiles"],
-        ["blue", "black"],
-        "Original Image Gradients: Edge vs Middle",
-        25, bin_edges[:-1],
-    )
-
-    plot_multiple_bar(
-        ax[2], [h["mid_og"] - h["edge_og"], h["mid_sw"] - h["edge_sw"]],
-        ["OG: Middle - Edge", "SW: Middle - Edge"],
-        ["blue", "red"],
-        "Histogram Differences (Middle minus Edge) per Image",
-        25, bin_edges[:-1],
-    )
-
-    plot_multiple_bar(
-        ax[3], [h["edge_sw"] - h["edge_og"], h["mid_sw"] - h["mid_og"]],
-        ["Edge: SW - OG", "Middle: SW - OG"],
-        ["orange", "black"],
-        "Histogram Differences Between SW and OG at Tile Positions",
-        25, bin_edges[:-1],
-    )
-
-    plt.tight_layout()
-    fig.savefig(Path(save_dir) / "gradient_bar_charts.png", dpi=300, bbox_inches="tight")
-    plt.close(fig)
-
-
-def _plot_kl_heatmaps(
-    grad_utils_og: Any,
-    grad_utils_sw: Any,
-    bin_edges: np.ndarray,
+    method_names: List[str],
     channel: int,
     save_dir: str | Path,
 ) -> None:
     """
-    Generate and save KL divergence heatmaps for the given channel range.
+    Generate KL divergence heatmaps for each method.
     """
-    fig_kl = plot_kl_heatmaps_for_range(
-        [grad_utils_og, grad_utils_sw],
-        bin_edges,
-        start=29,
-        end=33,
-        channels=channel,
-        labels=["OG", "SW"],
-    )
-    if fig_kl is not None:
-        fig_kl.savefig(Path(save_dir) / "kl_heatmaps.png", dpi=300, bbox_inches="tight")
-        plt.close(fig_kl)
+    n_methods = len(grad_utils_list)
+    
+    # For each method, plot KL heatmap comparing edge vs middle
+    for i, (grad_utils, method_name) in enumerate(zip(grad_utils_list, method_names)):
+        try:
+            fig_kl = plot_kl_heatmaps_for_range(
+                [grad_utils],
+                bin_edges,
+                start=29,
+                end=33,
+                channels=channel,
+                labels=[method_name],
+            )
+            if fig_kl is not None:
+                fig_kl.savefig(
+                    Path(save_dir) / f"kl_heatmap_{method_name.replace(' ', '_')}.png",
+                    dpi=300,
+                    bbox_inches="tight"
+                )
+                plt.close(fig_kl)
+                print(f"✅ Saved: kl_heatmap_{method_name}.png")
+        except Exception as e:
+            print(f"⚠️  KL heatmap failed for {method_name}: {e}")
 
+# ===============================================
+# Helper: Summary Statistics for N Methods
+# ===============================================
 
-def _write_summary(
+def _write_summary_multi(
     h: Dict[str, np.ndarray],
+    method_names: List[str],
     save_dir: str | Path,
 ) -> None:
     """
-    Compute key metrics (peakiness, KL divergence) and write summary to file.
+    Compare peakiness and KL(mid || edge) for each method.
+    Lower KL means the method's middle-tile gradient distribution
+    is closer to its edge-tile distribution → more stable.
     """
-    peakiness_og = GradientUtils.get_peakiness_scores(h["edge_og"], h["mid_og"])[-1]
-    peakiness_sw = GradientUtils.get_peakiness_scores(h["edge_sw"], h["mid_sw"])[-1]
-    peakiness_delta = peakiness_og - peakiness_sw
+    import numpy as np
+    save_dir = Path(save_dir)
 
-    kl_edge_mid_og = compute_kl_matrix([h["edge_og"], h["mid_og"]])
-    kl_edge_mid_sw = compute_kl_matrix([h["edge_sw"], h["mid_sw"]])
+    peakiness_scores = {}
+    kl_self_divergence = {}  # NEW
 
-    summary_path = Path(save_dir) / "summary.txt"
+    # --- Compute metrics for each method ---
+    for i, method_name in enumerate(method_names):
+
+        # Peakiness (unchanged)
+        peakiness = GradientUtils.get_peakiness_scores(
+            h[f"edge_{i}"],
+            h[f"mid_{i}"]
+        )[-1]
+        peakiness_scores[method_name] = peakiness
+
+        # NEW: KL(mid_i || edge_i)
+        kl_mat = compute_kl_matrix([h[f"mid_{i}"], h[f"edge_{i}"]])
+        kl_value = kl_mat[0, 1]
+        kl_self_divergence[method_name] = kl_value
+
+    # Rank methods by KL divergence
+    best_method_kl = min(kl_self_divergence, key=kl_self_divergence.get)
+    worst_method_kl = max(kl_self_divergence, key=kl_self_divergence.get)
+
+    # Rank by peakiness (existing logic)
+    best_peak = min(peakiness_scores, key=peakiness_scores.get)
+    worst_peak = max(peakiness_scores, key=peakiness_scores.get)
+
+    # --- Write summary ---
+    summary_path = save_dir / "summary_multi_method.txt"
     with open(summary_path, "w") as f:
-        f.write("=== Gradient Analysis Summary ===\n\n")
-        f.write("Peakiness Scores (Lower is better):\n")
-        f.write(f"  Original Method: {peakiness_og:.6f}\n")
-        f.write(f"  Sliding Window Method: {peakiness_sw:.6f}\n")
-        f.write(f"  Δ (OG - SW): {peakiness_delta:.6f}\n")
+        f.write("=" * 60 + "\n")
+        f.write("MULTI-METHOD GRADIENT ANALYSIS SUMMARY\n")
+        f.write("=" * 60 + "\n\n")
 
-        if peakiness_delta > 0:
-            f.write("  ✅ Sliding Window Method performs better (lower peakiness)\n")
-        else:
-            f.write("  ❌ Original Method performs better (lower peakiness)\n")
+        # Peakiness
+        f.write("Peakiness Scores (Lower is Better):\n")
+        f.write("-" * 40 + "\n")
+        for m in method_names:
+            score = peakiness_scores[m]
+            f.write(f"  {m:15s}: {score:.6f}")
+            if m == best_peak: f.write("  ✅ BEST")
+            if m == worst_peak: f.write("  ❌ WORST")
+            f.write("\n")
 
-        f.write(f"\nKL Divergence OG (edge vs mid): {kl_edge_mid_og[0,1]:.6f}\n")
-        f.write(f"KL Divergence SW (edge vs mid): {kl_edge_mid_sw[0,1]:.6f}\n")
+        f.write("\nKL Divergence KL(mid || edge) for Each Method:\n")
+        f.write("Lower is Better\n")
+        f.write("-" * 40 + "\n")
+        for m in method_names:
+            kl_val = kl_self_divergence[m]
+            f.write(f"  {m:15s}: {kl_val:.6f}")
+            if m == best_method_kl: f.write("  ✅ BEST")
+            if m == worst_method_kl: f.write("  ❌ WORST")
+            f.write("\n")
 
-    print(f"✅ Gradient analysis summary saved to {summary_path}")
+        f.write("\n" + "=" * 60 + "\n")
+        f.write(f"Best Method by KL(mid||edge): {best_method_kl}\n")
+        f.write(f"Best Method by Peakiness:    {best_peak}\n")
+        f.write("=" * 60 + "\n")
 
-
-# -------------------------------
-# PSNR + reconstruction helpers
-# -------------------------------
-
-def compute_psnr_and_plot(pred_sw, pred_og, target, save_dir):
-    """
-    Compare SW vs OG predictions against target and save PSNR plots.
-    """
-    os.makedirs(save_dir, exist_ok=True)
-    psnr_og = compute_psnr(pred_og, target)
-    psnr_sw = compute_psnr(pred_sw, target)
-    delta = psnr_sw - psnr_og
-
-    fig, ax = plt.subplots(figsize=(6, 4))
-    ax.bar(["OG", "SW"], [psnr_og, psnr_sw], color=["gray", "orange"])
-    ax.set_title(f"PSNR Comparison (Î”={delta:.2f})")
-    ax.set_ylabel("PSNR (dB)")
-    fig.savefig(Path(save_dir) / "psnr_comparison.png", dpi=300)
-    plt.close(fig)
-
-    with open(Path(save_dir) / "psnr_summary.txt", "w") as f:
-        f.write(f"OG PSNR: {psnr_og:.4f}\nSW PSNR: {psnr_sw:.4f}\nÎ”: {delta:.4f}\n")
-
-    print(f"✅ PSNR analysis saved to {save_dir}")
+    print(f"✅ Summary saved: {summary_path}")

@@ -25,7 +25,7 @@ class GradientUtils:
 
         self.mean = self.grad_middle.mean()
         self.std = self.grad_middle.std()
-
+        # print(f"Mean: {self.mean}, STD : {self.std}")
         # Bin edges
         if self._bin_edges is None:
             self._bin_edges = self.get_bin_edges(list(self.gradients) + [self.grad_edges, self.grad_middle])

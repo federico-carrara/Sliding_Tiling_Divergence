@@ -19,6 +19,8 @@ def kl_divergence(p, q, eps=1e-12):
     p = normalize_histogram(p, eps)
     q = normalize_histogram(q, eps)
     return np.sum(p * np.log((p + eps) / (q + eps)))
+#vec = scipy.special.rel_entr(p, q)    
+# kl_div = np.sum(vec)
 
 def compute_kl_matrix(histograms):
     n = len(histograms)

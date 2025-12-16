@@ -1,0 +1,24 @@
+[project]
+name = "hdn_env"
+version = "0.1.0"
+requires-python = ">=3.10"
+
+dependencies = [
+    "numpy>1.23.5",
+    "pandas==1.5.3",
+    "scipy",
+    "scikit-image",
+    "scikit-learn",
+    "matplotlib",
+    "tqdm",
+    "pillow",
+    "pyyaml",
+    "json5",
+    "opencv-python",
+    "seaborn",
+    "einops",
+    "torch",
+    "torchvision",
+    "torchaudio",
+]
+
