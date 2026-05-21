@@ -31,7 +31,7 @@ def load_prediction(path: Union[str, Path]) -> np.ndarray:
         with open(path, "rb") as f:
             return pickle.load(f)
     elif path.suffix in [".tif", ".tiff"]:
-        # TIFF expected shape: (N, C, H, W) → transpose to (N, H, W, C)
+        # TIFF stored in channel-first convention: (N, C, Z, Y, X)
         return tiff.imread(path)
     else:
         raise ValueError(

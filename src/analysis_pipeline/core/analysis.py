@@ -12,62 +12,73 @@ from .metrics import compute_kl_matrix
 from .plotting import plot_multiple_hist, plot_kl_heatmaps_for_range, save_figure
 
 
+def _broadcast_per_method_spec(
+    spec: list, n_methods: int, name: str
+) -> list[list[int]]:
+    """Normalise a per-axis or per-method tiling spec to a per-method list.
+
+    Accepts:
+      - a single per-axis spec (e.g. ``[64, 64]`` or ``[4, 64, 64]``) — applied
+        to every method;
+      - a per-method list of per-axis specs (e.g. ``[[64, 64], [32, 32]]``).
+
+    Returns a list of length ``n_methods``, each entry a list of ints.
+    """
+    if not isinstance(spec, (list, tuple)) or len(spec) == 0:
+        raise ValueError(f"{name} must be a non-empty list/tuple, got {spec!r}")
+
+    if all(isinstance(v, int) for v in spec):
+        return [list(spec) for _ in range(n_methods)]
+
+    if len(spec) != n_methods:
+        raise ValueError(
+            f"{name} has {len(spec)} per-method entries; expected {n_methods} "
+            "to match the number of predictions"
+        )
+    return [list(s) for s in spec]
+
+
 def run_gradient_analysis_multi(
     predictions_list: List[np.ndarray],
     method_names: List[str],
     save_dir: Path,
-    inner_tile_size: List[int] = None,
+    tile_size: list,
+    overlap: list,
     bins: int = 200,
     channel: int = None,
-    border: int = 16,
 ) -> None:
     """
     Run gradient-based analysis for multiple prediction methods.
 
     Args:
-        predictions_list: List of prediction arrays
-        method_names: Names of methods
-        save_dir: Save directory
-        inner_tile_size: Tile size used during prediction
-        bins: Number of histogram bins
-        channel: Channel to analyze (None for all)
-        border: Border size to remove
+        predictions_list: List of prediction arrays.
+        method_names: Names of methods.
+        save_dir: Save directory.
+        tile_size: Tile size used during prediction. Either a single per-axis
+            spec applied to every method (e.g. ``[64, 64]`` for 2D, ``[4, 64,
+            64]`` for 3D) or a per-method list of such specs.
+        overlap: Tile overlap used during prediction. Same per-method/per-axis
+            shape conventions as ``tile_size``.
+        bins: Number of histogram bins.
+        channel: Channel to analyze (None for all).
     """
     print("Running gradient-based analysis...")
 
-    # Normalize inner_tile_size to list of per-method sizes
-    if inner_tile_size is None:
-        inner_tile_size = [32] * len(predictions_list)
-    elif isinstance(inner_tile_size, int):
-        # Single int: apply to all methods
-        inner_tile_size = [inner_tile_size] * len(predictions_list)
-    elif isinstance(inner_tile_size[0], int):
-        # Single tile spec (e.g., [32] or [4,32,32]): apply to all methods
-        inner_tile_size = [inner_tile_size] * len(predictions_list)
-    else:
-        # Per-method specification (e.g., [[4,32,32], [5,32,32]])
-        assert len(inner_tile_size) == len(
-            predictions_list
-        ), f"inner_tile_size length ({len(inner_tile_size)}) must match number of predictions ({len(predictions_list)})"
+    tile_size = _broadcast_per_method_spec(tile_size, len(predictions_list), "tile_size")
+    overlap = _broadcast_per_method_spec(overlap, len(predictions_list), "overlap")
 
-    # Determine if 4D or 5D
+    # Determine 2D vs 3D from prediction layout: (N, C, H, W) vs (N, C, D, H, W).
     is_4d = len(predictions_list[0].shape) == 4
-
-    if is_4d:
-        GradientUtils = GradientUtils2D
-        border_size = border
-    else:
-        GradientUtils = GradientUtils3D
-        border_size = [0, border, border]
+    GradientUtils = GradientUtils2D if is_4d else GradientUtils3D
 
     # Compute gradient utilities for each method
     grad_utils_list = []
-    for pred, method_name, tile_size in zip(
-        predictions_list, method_names, inner_tile_size
+    for pred, method_name, ts, ov in zip(
+        predictions_list, method_names, tile_size, overlap
     ):
         print(f"  Computing gradients for {method_name}...")
         grad_utils = GradientUtils(
-            pred, tile_size=tile_size, border_size=border_size, channel=channel
+            pred, tile_size=ts, overlap=ov, channel=channel
         )
         grad_utils_list.append(grad_utils)
 

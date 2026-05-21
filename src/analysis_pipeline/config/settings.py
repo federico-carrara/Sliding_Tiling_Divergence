@@ -1,78 +1,76 @@
 """Configuration settings for analysis pipeline."""
 
-from dataclasses import dataclass, field
-from typing import List, Optional
 from pathlib import Path
+from typing import Optional, Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-@dataclass
-class GradientConfig:
+class GradientConfig(BaseModel):
     """Configuration for gradient analysis."""
 
-    inner_tile_size: List[int] = field(default_factory=lambda: [32])
+    tile_size: list[int]
+    overlap: list[int]
     bins: int = 100
-    channel: Optional[int] = 0
-    border_size: int = 0
-    kl_start: int = 29
-    kl_end: int = 33
-    eps: float = 1e-12
+    channel: Optional[int]
+
+    @model_validator(mode="after")
+    def _check_tiling(self) -> Self:
+        if len(self.tile_size) != len(self.overlap):
+            raise ValueError(
+                f"tile_size and overlap must have the same number of axes "
+                f"(got {len(self.tile_size)} vs {len(self.overlap)})"
+            )
+        for i, (t, o) in enumerate(zip(self.tile_size, self.overlap)):
+            if t <= 0:
+                raise ValueError(f"tile_size[{i}]={t} must be > 0")
+            if o < 0:
+                raise ValueError(f"overlap[{i}]={o} must be >= 0")
+            if o >= t:
+                raise ValueError(
+                    f"overlap[{i}]={o} must be < tile_size[{i}]={t}"
+                )
+        return self
 
 
-@dataclass
-class PlotConfig:
+class PlotConfig(BaseModel):
     """Configuration for plotting."""
 
     dpi: int = 300
-    figsize_per_method: tuple = (8, 4)
-    colormap: str = "coolwarm"
-    colors: List[str] = field(
+    figsize_per_method: tuple[float, float] = (8.0, 4.0)
+    colormap: str = "Greys_r"
+    colors: list[str] = Field(
         default_factory=lambda: ["blue", "red", "green", "orange", "purple"]
     )
 
 
-@dataclass
-class AnalysisConfig:
+class AnalysisConfig(BaseModel):
     """Main configuration for analysis pipeline."""
 
-    model_name: str
+    model_config = ConfigDict(protected_namespaces=())
+
+    name: str
     dataset: str
-    save_dir: Path
-    predictions: List[str]
-    method_names: List[str]
-    padding: List[int] = field(default_factory=lambda: [48])
-
-    # Sub-configs
-    gradient: GradientConfig = field(default_factory=GradientConfig)
-    plot: PlotConfig = field(default_factory=PlotConfig)
-
-    # Analysis flags
+    save_dir: str | Path
+    predictions: list[str]
+    method_names: list[str]
+    gradient_config: GradientConfig
+    plot_config: PlotConfig = Field(default_factory=PlotConfig)
     run_gradient_analysis: bool = True
     run_qualitative_analysis: bool = True
 
-    def __post_init__(self):
-        """Validate configuration after initialization."""
-        self.save_dir = Path(self.save_dir)
-
+    @model_validator(mode="after")
+    def _check_predictions_and_methods(self) -> "AnalysisConfig":
         if len(self.predictions) != len(self.method_names):
             raise ValueError(
                 f"Number of predictions ({len(self.predictions)}) must match "
                 f"method names ({len(self.method_names)})"
             )
-
         if len(self.predictions) < 2:
             raise ValueError("At least 2 predictions required")
-
         if len(self.predictions) > 5:
             raise ValueError("Maximum 5 predictions supported")
-
-        # Ensure padding list matches predictions
-        if len(self.padding) == 1:
-            self.padding = self.padding * len(self.predictions)
-        elif len(self.padding) != len(self.predictions):
-            raise ValueError(
-                f"Padding length ({len(self.padding)}) must be 1 or match "
-                f"predictions ({len(self.predictions)})"
-            )
+        return self
 
 
 def load_config_from_args(args) -> AnalysisConfig:
@@ -85,14 +83,17 @@ def load_config_from_args(args) -> AnalysisConfig:
     Returns:
         AnalysisConfig instance
     """
+    # TODO: rewire CLI args (--tile_size, --overlap) — the CLI still exposes
+    # legacy --inner_tile_size / --padding / --border_size flags which this
+    # loader intentionally ignores after the seam-locator refactor. Until the
+    # CLI is updated, callers should drive the pipeline from Python with an
+    # explicit GradientConfig.
     pred_files = [p.strip() for p in args.predictions.split(",")]
     method_names = [m.strip() for m in args.method_names.split(",")]
 
     gradient_config = GradientConfig(
-        inner_tile_size=args.inner_tile_size,
         bins=args.bins,
         channel=args.channel,
-        border_size=getattr(args, "border_size", 0),
     )
 
     return AnalysisConfig(
@@ -101,7 +102,6 @@ def load_config_from_args(args) -> AnalysisConfig:
         save_dir=args.save_dir,
         predictions=pred_files,
         method_names=method_names,
-        padding=args.padding,
         gradient=gradient_config,
         run_gradient_analysis=args.gradient_analysis
         and not getattr(args, "skip_gradient_analysis", False),
