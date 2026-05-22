@@ -4,6 +4,8 @@ from typing import List
 import numpy as np
 
 
+# TODO: deprecated dead-code, kept only for keeping ideas around
+
 def wiener_entropy(hist: np.ndarray, eps: float = 1e-12) -> float:
     """
     Compute Wiener entropy (spectral flatness-like) for a histogram.

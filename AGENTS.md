@@ -2,11 +2,38 @@
 
 Guidance for AI coding agents working in this repository.
 
+## Test / verification environment
+
+A dedicated conda environment is pre-built. **Use this env for all tests, verifications, and CLI smoke runs** — do not waste tokens hunting for one that has the right deps:
+
+```
+/localscratch/miniforge3/envs/sliding_tiling_env/bin/python
+```
+
+Created via `conda create -n sliding_tiling_env python=3.12 -y` then `pip install -e .` from the repo root, so the package is editable. Imports work without `PYTHONPATH=src`.
+
+Quick commands:
+
+```bash
+# Run all verification scripts (geometry, null calibration, artifact injection)
+/localscratch/miniforge3/envs/sliding_tiling_env/bin/python tests/test_geometry.py
+/localscratch/miniforge3/envs/sliding_tiling_env/bin/python tests/test_null_calibration.py
+/localscratch/miniforge3/envs/sliding_tiling_env/bin/python tests/test_artifact_injection.py
+
+# CLI smoke
+/localscratch/miniforge3/envs/sliding_tiling_env/bin/python -m analysis_pipeline.cli.analyze --help
+```
+
+If a dep is missing, `pip install <pkg>` inside the env — don't switch to another env.
+
 ## What this repo is
 
-A small Python library for **quantifying tiling artifacts** in stitched large-scale images produced by tiled inference. It compares the distribution of finite-difference gradients sampled **across tile seams** to those sampled **inside tiles**: the closer the two distributions, the smoother the stitching. The headline metric is an asymmetric KL divergence `KL(mid ‖ edge)` — lower is better.
+A small Python library for **quantifying tiling artifacts** in stitched large-scale images produced by tiled inference. As of the per-tile rewrite, it tests **each kept region of the TiledPatching grid** against its locally-adjacent gradients with a block permutation test, yielding a per-tile statistic `T_tile` and p-value `p_tile`. Two per-image scalars are reported: `median(T_tile)` and `frac_rejected` at α=0.05.
+
+Reference-free: only the stitched prediction and the TiledPatching `(tile_size, overlap)` are needed. Conceptual anchor: the JPEG-blockiness IQA literature (Wang/Sheikh/Bovik 2002; Pan et al. 2004; Liu & Heynderickx 2009). Full design lives at [agents_artifacts/per_tile_metric_design.md](agents_artifacts/per_tile_metric_design.md).
 
 Entry points:
+
 - CLI: `analyze-experiment` → [src/analysis_pipeline/cli/analyze.py](src/analysis_pipeline/cli/analyze.py)
 - Python API: `run_gradient_analysis_multi` in [src/analysis_pipeline/core/analysis.py](src/analysis_pipeline/core/analysis.py)
 
@@ -14,78 +41,83 @@ Entry points:
 
 ```
 src/analysis_pipeline/
-├── cli/analyze.py          # argparse CLI, prediction loading, channel loop
-├── config/settings.py      # config dataclass + arg validation
+├── cli/analyze.py            # argparse CLI; per-tile flags only
+├── config/settings.py        # PerTileConfig + AnalysisConfig (pydantic)
 ├── core/
-│   ├── gradient_analysis.py  # GradientUtils2D / GradientUtils3D
-│   ├── metrics.py            # KL divergence, peakiness, Wiener entropy
-│   ├── analysis.py           # multi-method orchestrator + summary writer
-│   └── plotting.py           # histogram & KL-heatmap figures
-└── utils/                   # I/O, padding, 4D reshaping
+│   ├── seams.py              # closed-form seam positions from TiledPatching
+│   ├── tiles.py              # kept-region enumeration + owned-seam list
+│   ├── sampling.py           # per-tile seam_sample / control_sample
+│   ├── statistics.py         # kl / js / ks / wasserstein / mean_abs_ratio
+│   ├── permutation.py        # vectorized block-permutation engine
+│   ├── aggregation.py        # TileResult / ImageReport / MethodReport dataclasses
+│   ├── per_tile.py           # per-image orchestrator (one slice in, one report out)
+│   ├── analysis.py           # multi-method orchestrator (legacy entry name)
+│   ├── gradient_analysis.py  # compute_gradients_{2d,3d} helpers only
+│   ├── metrics.py            # legacy KL/Wiener helpers — orphaned, used by plotting.py
+│   └── plotting.py           # legacy histogram/KL-heatmap figures — orphaned but kept for v2 reuse
+└── utils/
+    ├── array_utils.py        # ensure_4d (channel-first)
+    └── file_utils.py         # load_prediction (.pkl / .tiff)
+tests/
+├── test_geometry.py          # tile enumeration + owned-seam classification
+├── test_null_calibration.py  # flat-field null check (frac_rejected ≈ α)
+└── test_artifact_injection.py # synthetic seam shift → tiles near seam reject
 ```
 
 ## How the pipeline works
 
-### 1. Tile edges / stitching seams
+### 1. Geometry (no detection)
 
-Seams are **not detected** from pixel content — the inner tile size `T` is supplied by the user (`--inner_tile_size 32`, or `"4,32,32;5,32,32"` per method, parsed in [analyze.py:91-119](src/analysis_pipeline/cli/analyze.py#L91-L119)).
+The TiledPatching geometry is supplied by the user (`--tile_size 64,64 --overlap 32,32` etc.); seams are derived analytically in [src/analysis_pipeline/core/seams.py](src/analysis_pipeline/core/seams.py) — closed form lifted from `careamics/dataset/patching/tiled_patching.py::_compute_1d_coords`:
 
-Pipeline:
-1. Trim outer borders via [border_free](src/analysis_pipeline/core/gradient_analysis.py#L205-L221) (2D) / [border_free](src/analysis_pipeline/core/gradient_analysis.py#L310-L331) (3D).
-2. Compute first-difference gradients along each axis ([compute_gradients](src/analysis_pipeline/core/gradient_analysis.py#L223-L239) for 2D; [compute_gradients](src/analysis_pipeline/core/gradient_analysis.py#L333-L351) for 3D).
-3. Subsample on the tile lattice via strided slicing in [_gradients_along_tile_grid](src/analysis_pipeline/core/gradient_analysis.py#L241-L273): `grad_x[:, :, ox::tile_sz_x, :]`, `grad_y[:, oy::tile_sz_y, :, :]` (and `oz::tile_sz_z` for 3D in [_gradients_along_tile_grid](src/analysis_pipeline/core/gradient_analysis.py#L353-L382)).
-4. The **edge** offset is `tile_size − 1` (last pixel of each tile = the seam); the **middle** offset is `tile_size // 2 − 1` (interior reference). See [get_gradients_at](src/analysis_pipeline/core/gradient_analysis.py#L275-L301).
+- `step = tile_size - overlap`, `M = overlap // 2`
+- `N = ceil((axis_size - overlap) / step)` tiles per axis
+- Seams at `{k * step + M : k = 1, …, N - 1}` (interior only)
 
-So seams are implicitly the periodic lattice of pixel columns/rows/planes spaced `T` apart, anchored at the last pixel of each tile.
+Kept-region tiles span the slabs between consecutive seams; the first and last regions include the image boundary. Per-tile owned seams: 4 (2D interior) / 3 (2D edge) / 2 (2D corner); 6 / 4-5 / 3 in 3D.
 
-### 2. The metric (asymmetric KL)
+### 2. Per-tile two-sample test
 
-The KL implementation in [metrics.py:91-105](src/analysis_pipeline/core/metrics.py#L91-L105) is the plain asymmetric form:
+For each owned seam in a tile:
 
-```python
-sum(p * log((p+eps)/(q+eps)))
-```
+- **Seam sample**: the 1-D across-seam gradient slice *on* the seam, restricted to the tile's parallel range.
+- **Control sample**: ``2 * strip_width`` strips at gradient-index offsets `{−N, …, −1, +1, …, +N}` from the seam, same parallel range. Strips span both adjacent kept regions — both sides of the seam contribute.
 
-with both histograms normalized to sum to 1 ([normalize_histogram](src/analysis_pipeline/core/metrics.py#L76-L88)).
+All owned-seam slices and all control strips pool into one `seam_sample` and one `control_sample` per tile, regardless of seam axis (isotropy is assumed; ablations are out of scope for v1).
 
-The reported summary is `KL(mid ‖ edge)` per method — computed in [_write_summary_multi](src/analysis_pipeline/core/analysis.py#L300-L324) as `compute_kl_matrix([h["mid_i"], h["edge_i"]])[0, 1]` and written to `summary_kl_divergence.txt`. **Not symmetric** (no JS, no symmetrized KL); `compute_kl_matrix` builds the full pairwise asymmetric table but only the mid→edge direction is surfaced.
+**Geometric constraint:** `step ≥ 2*strip_width + 2` so opposite-side strips can't overlap the opposite seam. Enforced at config validation and again in `per_image_tile_scan`.
 
-Histograms share bin edges across all methods so KL values are comparable: see [_compute_histograms_multi](src/analysis_pipeline/core/analysis.py#L159-L185), which calls [get_bin_edges](src/analysis_pipeline/core/gradient_analysis.py#L61-L75) (`np.histogram` with `bins=num_bins`, default 200 — CLI default is 100).
+### 3. Block permutation
 
-### 3. Pixel counts feeding the distributions
+Each per-seam / per-strip slice is partitioned into blocks of size `B` (default 3). Blocks never span slice boundaries — they only carry intra-slice spatial coherence along the parallel axis. The combined block list is permuted `R` times (default 1000) preserving seam/control block counts; `T_null` is recomputed each time.
 
-Two distinct populations:
+`p = (1 + #{T_null ≥ T_obs}) / (1 + R)` (Phipson–Smyth — avoids a hard zero).
 
-- **Gradient field**: computed on every pixel of the border-trimmed image. For an `(N, H, W, C)` array that's ~`N·H·(W−1)·C` x-gradients plus ~`N·(H−1)·W·C` y-gradients (analogous for z in 3D). See [compute_gradients](src/analysis_pipeline/core/gradient_analysis.py#L237-L239).
+Fast paths:
+- Binned (KL, JS): per-block histogram contributions are pre-computed once on per-tile joint bin edges, then summed under each permutation in one vectorized NumPy call.
+- `mean_abs_ratio`: per-block abs sum + length pre-computed; same idea.
+- KS / Wasserstein fall back to a Python loop calling the registered statistic.
 
-- **Edge / middle distributions** (what actually enters the histograms): strided subsamples on the tile lattice ([_gradients_along_tile_grid](src/analysis_pipeline/core/gradient_analysis.py#L241-L273)). For tile size `T` in 2D each distribution is roughly:
+### 4. Aggregation
 
-  ```
-  N · H · ⌈W/T⌉ · C    (grad_x at columns offset by T)
-  + N · ⌈H/T⌉ · W · C  (grad_y at rows offset by T)
-  ≈ 2 · N·H·W·C / T
-  ```
+Per image: `median(T_tile)` and `frac_rejected = mean(p_tile < α)`. Per method: mean of both across images. NaN tiles (fewer than 2 owned seams) excluded.
 
-  With `T=32` that's ~1/16 of all gradient pixels per distribution. In 3D it's ~`3·N·D·H·W·C/T` (with equal `T` per axis).
-
-Before histogramming, both edge and middle gradients are z-score normalized using the **middle's** mean/std for that method (per-method self-normalization), in [_extract_gradients_multi](src/analysis_pipeline/core/analysis.py#L128-L156) via [_normalize_gradients](src/analysis_pipeline/core/gradient_analysis.py#L155-L177).
-
-Channel control: `--channel <int>` restricts to one channel; `--channel 2` is a special CLI flag meaning "loop over channels 0 and 1 separately" ([analyze.py:172-184](src/analysis_pipeline/cli/analyze.py#L172-L184)).
+The orchestrator returns a `MultiMethodReport` dataclass and, if `save_dir` is set, pickles it to `save_dir/per_tile_report.pkl`. No CSVs / npy / summary text files are emitted — that's v2 work.
 
 ## Conventions
 
-- 2D arrays are `(N, H, W, C)`; 3D arrays are `(N, D, H, W, C)`. Dimensionality is inferred by `len(shape)` in [run_gradient_analysis_multi](src/analysis_pipeline/core/analysis.py#L54-L62); 6D inputs are squeezed once in the CLI.
-- `inner_tile_size` may be `int`, single tile spec (`[32]`, `[4,32,32]`), or per-method list of specs; normalization happens in [run_gradient_analysis_multi](src/analysis_pipeline/core/analysis.py#L38-L51).
-- Output directory: `<save_dir>/Gradient_Analysis/` with `gradient_histograms_all_methods.png` and `summary_kl_divergence.txt`.
-- `GradientUtils` is an abstract base; the 2D/3D subclasses implement `border_free`, `compute_gradients`, and `get_gradients_at`.
+- Arrays are **channel-first**: 2-D `(N, C, H, W)`, 3-D `(N, C, D, H, W)`. `ensure_4d` inserts the channel axis at position 1 for 3-D inputs. Dimensionality is inferred from `predictions.ndim` (4 → 2-D, 5 → 3-D).
+- `tile_size` / `overlap` may be a flat per-axis list (`[64, 64]`) applied to every method, or a per-method nested list (`[[64, 64], [32, 32]]`) — broadcast in `_broadcast_per_method_spec` ([core/analysis.py](src/analysis_pipeline/core/analysis.py)).
+- 3-D z-direction is pooled with x/y by default. `pool_z_with_xy=False` is reserved for v2 and currently emits a warning while still pooling.
+- Single channel only per run; the legacy `--channel 2` magic-iterate-over-channels behaviour is removed. Call once per channel if you need multiple.
 
 ## Gotchas
 
-- Changing the histogram normalization rule (currently each method self-normalizes by its own middle stats) breaks the reported KL — a "combined-normalization" path exists in [_plot_combined_histogram_multi](src/analysis_pipeline/core/analysis.py#L217-L270) but is **not** wired into the summary. The comment at [analysis.py:319-321](src/analysis_pipeline/core/analysis.py#L319-L321) flags this as intentional.
-- KL direction matters: only `KL(mid ‖ edge)` is reported. If you flip it, the ranking can change.
-- `border_free` in 2D uses a symmetric int crop; in 3D it accepts `[z, y, x]`. The pipeline passes `[0, border, border]` for 3D (no z-cropping by default — see [run_gradient_analysis_multi](src/analysis_pipeline/core/analysis.py#L56-L62)).
-- The CLI sets `border=0` when calling `run_gradient_analysis_multi` ([analyze.py:183, 193](src/analysis_pipeline/cli/analyze.py#L183)) — outer cropping is expected to be done already via `--padding` (`remove_padding`). Don't double-crop.
-- `--bins` CLI default (100) differs from the API default (200). Use the same value across runs you want to compare.
+- **Calibration under residual dependence** is the canary. If `tests/test_null_calibration.py` ever fails (`frac_rejected` significantly above α on a flat field), raise `block_size` from 3 to 5–7 before chasing anything else.
+- **Strip width vs. step**: `tile_size - overlap` must be ≥ `2*strip_width + 2`. Lower the strip width if you want overlap-heavy tilings.
+- **Dilution at low bias**: each interior tile pools across 4 (2-D) or 6 (3-D) owned seams; an artifact present on only one of them produces a signal diluted by ~3-5×. `tests/test_artifact_injection.py` works with a +2.0 bias for this reason.
+- **`plotting.py` and `metrics.py` are orphaned**, not deleted. They retain helpers (`plot_multiple_hist`, `compute_kl_matrix`, `wiener_entropy`, …) that may be reused when per-tile heatmaps and boxplots land in v2. No v1 code imports them; keep them quarantined.
+- **Pydantic 2 is required** (not v1 syntax). `config/settings.py` uses `model_validator(mode="after")`.
 
 ## Running it
 
@@ -93,14 +125,28 @@ Channel control: `--channel <int>` restricts to one channel; `--channel 2` is a 
 pip install -e .
 
 analyze-experiment \
-  --dataset MyDataset \
   --model_name microsplit \
+  --dataset MyDataset \
   --predictions "pred1.tiff,pred2.tiff" \
   --method_names "OG,SW" \
   --save_dir ./results \
-  --inner_tile_size 32 \
-  --bins 200 \
-  --padding 48
+  --tile_size 64,64 \
+  --overlap 32,32 \
+  --statistic kl \
+  --n_permutations 1000 \
+  --strip_width 4 \
+  --block_size 3 \
+  --channel 0
 ```
 
-There is no test suite at present.
+Output: `./results/per_tile_report.pkl` with a `MultiMethodReport`, plus a console-printed summary table.
+
+## Verification scripts
+
+`tests/` has three smoke scripts; none are wired into pytest yet. Run them directly with the env above:
+
+- `test_geometry.py` — tile counts, owned-seam classification (2-D and 3-D).
+- `test_null_calibration.py` — `frac_rejected ≈ α` on a flat Gaussian field.
+- `test_artifact_injection.py` — injected +2.0 seam shift detected by the right tiles, not by far ones.
+
+Add new tests next to these. Each script uses bare `assert` + exit-code, no pytest needed.

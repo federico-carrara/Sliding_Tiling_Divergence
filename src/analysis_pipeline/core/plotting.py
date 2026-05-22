@@ -11,6 +11,8 @@ from scipy.stats import norm
 from .metrics import compute_kl_matrix, normalize_histogram
 
 
+# TODO: deprecated dead-code, kept only for keeping ideas around
+
 def plot_multiple_hist(
     ax: plt.Axes,
     histograms: List[np.ndarray],

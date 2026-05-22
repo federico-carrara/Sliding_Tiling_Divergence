@@ -27,8 +27,10 @@ from typing import Optional
 
 import numpy as np
 
-from .statistics import EPS, StatisticSpec
+from .statistics import StatisticSpec
 
+
+EPS = 1e-12
 
 def _split_into_blocks(
     slices: list[np.ndarray], block_size: int
