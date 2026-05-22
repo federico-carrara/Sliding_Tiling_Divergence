@@ -27,25 +27,10 @@ class TileResult:
 
 
 @dataclass
-class AnisotropyReport:
-    """Summary of the optional control-anisotropy diagnostic.
-
-    Empty (``n_tested == 0``) when fewer than two seam axes carry samples,
-    or when the orchestrator's ``diagnostic_n_tiles`` is zero.
-    """
-
-    n_tested: int
-    median_p: float
-    n_significant: int
-    alpha: float
-
-
-@dataclass
 class ImageReport:
     """Per-image roll-up of tile-level scores."""
 
     tiles: list[TileResult]
-    anisotropy: AnisotropyReport
     median_T: float
     frac_rejected: float
 
@@ -69,7 +54,6 @@ class MultiMethodReport:
 
 def aggregate_image(
     tiles: list[TileResult],
-    anisotropy: AnisotropyReport,
     alpha: float,
 ) -> ImageReport:
     valid_T = np.array(
@@ -84,7 +68,6 @@ def aggregate_image(
     )
     return ImageReport(
         tiles=tiles,
-        anisotropy=anisotropy,
         median_T=median_T,
         frac_rejected=frac_rejected,
     )

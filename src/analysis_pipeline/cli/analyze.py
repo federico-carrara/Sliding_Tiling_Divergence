@@ -98,12 +98,6 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--random_seed", type=int, default=0, help="RNG seed.")
     parser.add_argument(
-        "--diagnostic_n_tiles",
-        type=int,
-        default=16,
-        help="Random tiles to use for the anisotropy diagnostic (0 to skip).",
-    )
-    parser.add_argument(
         "--no_pool_z_with_xy",
         dest="pool_z_with_xy",
         action="store_false",
@@ -175,7 +169,6 @@ def main() -> int:
         alpha=config.per_tile.alpha,
         num_bins_per_tile=config.per_tile.num_bins_per_tile,
         random_seed=config.per_tile.random_seed,
-        diagnostic_n_tiles=config.per_tile.diagnostic_n_tiles,
         pool_z_with_xy=config.per_tile.pool_z_with_xy,
         channel=config.per_tile.channel,
     )

@@ -12,10 +12,9 @@ from typing import Sequence
 import numpy as np
 
 from .aggregation import ImageReport, TileResult, aggregate_image
-from .diagnostics import anisotropy_diagnostic
 from .gradient_analysis import compute_gradients
 from .permutation import permutation_pvalue
-from .sampling import TileSample, sample_tile
+from .sampling import sample_tile
 from .statistics import get_statistic
 from .tiles import enumerate_tiles
 
@@ -44,7 +43,6 @@ def per_image_tile_scan(
     statistic: str,
     alpha: float,
     num_bins_per_tile: int,
-    diagnostic_n_tiles: int,
     rng: np.random.Generator,
 ) -> ImageReport:
     """Run the per-tile test on one single-channel image slice.
@@ -76,7 +74,6 @@ def per_image_tile_scan(
         stat_kwargs["num_bins"] = num_bins_per_tile
 
     tile_results: list[TileResult] = []
-    tile_samples_for_diag: list[TileSample] = []
 
     for tile in tiles_list:
         if tile.n_seams < 2:
@@ -93,7 +90,6 @@ def per_image_tile_scan(
             continue
 
         sample = sample_tile(gradients, tile, strip_width)
-        tile_samples_for_diag.append(sample)
 
         T_obs, p, _ = permutation_pvalue(
             sample.seam_slices,
@@ -116,11 +112,4 @@ def per_image_tile_scan(
             )
         )
 
-    aniso = anisotropy_diagnostic(
-        tile_samples_for_diag,
-        rng,
-        n_tested=diagnostic_n_tiles,
-        alpha=alpha,
-    )
-
-    return aggregate_image(tile_results, aniso, alpha)
+    return aggregate_image(tile_results, alpha)

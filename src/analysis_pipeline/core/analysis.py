@@ -55,7 +55,6 @@ def run_gradient_analysis_multi(
     alpha: float = 0.05,
     num_bins_per_tile: int = 32,
     random_seed: int = 0,
-    diagnostic_n_tiles: int = 16,
     pool_z_with_xy: bool = True,
     channel: int = 0,
 ) -> MultiMethodReport:
@@ -103,7 +102,6 @@ def run_gradient_analysis_multi(
             "alpha": alpha,
             "num_bins_per_tile": num_bins_per_tile,
             "random_seed": random_seed,
-            "diagnostic_n_tiles": diagnostic_n_tiles,
             "pool_z_with_xy": pool_z_with_xy,
             "channel": channel,
             "tile_size": tile_size_per,
@@ -146,14 +144,12 @@ def run_gradient_analysis_multi(
                 statistic=statistic,
                 alpha=alpha,
                 num_bins_per_tile=num_bins_per_tile,
-                diagnostic_n_tiles=diagnostic_n_tiles,
                 rng=rng,
             )
             image_reports.append(ir)
             print(
                 f"    image {n}: median_T={ir.median_T:.4g} "
-                f"frac_rejected={ir.frac_rejected:.3f} "
-                f"anisotropy_median_p={ir.anisotropy.median_p:.3f}"
+                f"frac_rejected={ir.frac_rejected:.3f}"
             )
 
         method_report = aggregate_method(image_reports)

@@ -33,7 +33,6 @@ class PerTileConfig(BaseModel):
     alpha: float = Field(default=0.05, gt=0.0, lt=1.0)
     num_bins_per_tile: int = Field(default=32, ge=2)
     random_seed: int = 0
-    diagnostic_n_tiles: int = Field(default=16, ge=0)
     pool_z_with_xy: bool = True
     channel: int = Field(default=0, ge=0)
 
@@ -118,7 +117,6 @@ def load_config_from_args(args) -> AnalysisConfig:
         alpha=args.alpha,
         num_bins_per_tile=args.num_bins_per_tile,
         random_seed=args.random_seed,
-        diagnostic_n_tiles=args.diagnostic_n_tiles,
         pool_z_with_xy=args.pool_z_with_xy,
         channel=args.channel,
     )

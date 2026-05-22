@@ -1,7 +1,6 @@
 """Core analysis modules."""
 
 from .aggregation import (
-    AnisotropyReport,
     ImageReport,
     MethodReport,
     MultiMethodReport,
@@ -16,7 +15,6 @@ from .per_tile import per_image_tile_scan
 from .statistics import STATISTICS, StatisticSpec, get_statistic
 
 __all__ = [
-    "AnisotropyReport",
     "ImageReport",
     "MethodReport",
     "MultiMethodReport",
