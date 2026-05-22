@@ -7,15 +7,19 @@ import numpy as np
 # TODO: deprecated dead-code, kept only for keeping ideas around
 
 def wiener_entropy(hist: np.ndarray, eps: float = 1e-12) -> float:
-    """
-    Compute Wiener entropy (spectral flatness-like) for a histogram.
+    """Compute the Wiener entropy (spectral-flatness-like) of a histogram.
 
-    Args:
-        hist: Histogram array
-        eps: Small epsilon to avoid division by zero
+    Parameters
+    ----------
+    hist : np.ndarray
+        Input histogram array.
+    eps : float, default=1e-12
+        Small epsilon to avoid division by zero.
 
-    Returns:
-        Wiener entropy value
+    Returns
+    -------
+    float
+        Wiener entropy value.
     """
     hist = np.asarray(hist).astype(float)
     if hist.size == 0:
@@ -34,21 +38,24 @@ def get_peakiness_scores(
     histogram_middle: np.ndarray,
     eps: float = 1e-12,
 ) -> List[float]:
-    """
-    Compute Wiener entropy peakiness scores for histograms.
+    """Compute Wiener entropy peakiness scores for paired histograms.
 
-    Computes scores for:
-      - edges histogram
-      - middle histogram
-      - difference (middle - edges)
+    Computes scores for the edges histogram, the middle histogram, and their
+    difference (middle - edges).
 
-    Args:
-        histogram_edges: Histogram of edge gradients
-        histogram_middle: Histogram of middle gradients
-        eps: Small epsilon value
+    Parameters
+    ----------
+    histogram_edges : np.ndarray
+        Histogram of edge gradients.
+    histogram_middle : np.ndarray
+        Histogram of middle gradients.
+    eps : float, default=1e-12
+        Small epsilon to avoid division by zero.
 
-    Returns:
-        List of three peakiness scores
+    Returns
+    -------
+    list of float
+        Three Wiener-entropy peakiness scores ``[edges, middle, middle - edges]``.
     """
     scores = []
     for x in [histogram_edges, histogram_middle, histogram_middle - histogram_edges]:
@@ -57,17 +64,21 @@ def get_peakiness_scores(
 
 
 def compute_peakiness(hist: np.ndarray, eps: float = 1e-12) -> float:
-    """
-    Calculate histogram 'peakiness': sum of top 10% bin masses after normalization.
+    """Compute a histogram 'peakiness' score (lower is smoother).
 
-    Lower peakiness = better (smoother gradients).
+    Defined as the sum of the top 10% of bin masses after normalization.
 
-    Args:
-        hist: Input histogram
-        eps: Small epsilon for normalization
+    Parameters
+    ----------
+    hist : np.ndarray
+        Input histogram.
+    eps : float, default=1e-12
+        Small epsilon for normalization.
 
-    Returns:
-        Peakiness score
+    Returns
+    -------
+    float
+        Peakiness score.
     """
     hist = normalize_histogram(hist, eps=eps)
     sorted_vals = np.sort(hist)[::-1]
@@ -76,31 +87,40 @@ def compute_peakiness(hist: np.ndarray, eps: float = 1e-12) -> float:
 
 
 def normalize_histogram(arr: np.ndarray, eps: float = 1e-12) -> np.ndarray:
-    """
-    Normalize histogram to sum to 1.
+    """Normalize a histogram so its entries sum to 1.
 
-    Args:
-        arr: Input histogram
-        eps: Small epsilon to avoid division by zero
+    Parameters
+    ----------
+    arr : np.ndarray
+        Input histogram.
+    eps : float, default=1e-12
+        Small epsilon to avoid division by zero.
 
-    Returns:
-        Normalized histogram
+    Returns
+    -------
+    np.ndarray
+        Normalized histogram.
     """
     arr = np.asarray(arr, dtype=float)
     return arr / (arr.sum() + eps)
 
 
 def kl_divergence(p: np.ndarray, q: np.ndarray, eps: float = 1e-12) -> float:
-    """
-    Compute Kullback-Leibler divergence KL(p || q).
+    """Compute the Kullback–Leibler divergence ``KL(p || q)``.
 
-    Args:
-        p: First probability distribution (histogram)
-        q: Second probability distribution (histogram)
-        eps: Small epsilon to avoid log(0)
+    Parameters
+    ----------
+    p : np.ndarray
+        First probability distribution (histogram).
+    q : np.ndarray
+        Second probability distribution (histogram).
+    eps : float, default=1e-12
+        Small epsilon to avoid ``log(0)``.
 
-    Returns:
-        KL divergence value
+    Returns
+    -------
+    float
+        KL divergence value.
     """
     p = normalize_histogram(p, eps)
     q = normalize_histogram(q, eps)
@@ -108,14 +128,18 @@ def kl_divergence(p: np.ndarray, q: np.ndarray, eps: float = 1e-12) -> float:
 
 
 def compute_kl_matrix(histograms: List[np.ndarray]) -> np.ndarray:
-    """
-    Compute pairwise KL divergence matrix for multiple histograms.
+    """Compute the pairwise KL divergence matrix for a list of histograms.
 
-    Args:
-        histograms: List of histograms
+    Parameters
+    ----------
+    histograms : list of np.ndarray
+        Histograms to compare pairwise.
 
-    Returns:
-        NxN matrix where element (i,j) is KL(hist_i || hist_j)
+    Returns
+    -------
+    np.ndarray
+        ``(N, N)`` matrix where element ``(i, j)`` is ``KL(hist_i || hist_j)``
+        (diagonal is zero).
     """
     n = len(histograms)
     kl_mat = np.zeros((n, n))

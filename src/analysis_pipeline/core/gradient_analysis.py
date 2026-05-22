@@ -16,9 +16,24 @@ import numpy as np
 
 
 def compute_gradients_2d(img: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Return ``(g_y, g_x)`` for a 2-D image ``(H, W)``.
+    """Compute ``(g_y, g_x)`` finite-difference gradients for a 2-D image.
 
-    Shapes: ``g_y`` is ``(H-1, W)``; ``g_x`` is ``(H, W-1)``.
+    Parameters
+    ----------
+    img : np.ndarray
+        2-D image ``(H, W)``.
+
+    Returns
+    -------
+    g_y : np.ndarray
+        Gradient along axis 0, shape ``(H - 1, W)``.
+    g_x : np.ndarray
+        Gradient along axis 1, shape ``(H, W - 1)``.
+
+    Raises
+    ------
+    ValueError
+        If ``img`` is not 2-D.
     """
     if img.ndim != 2:
         raise ValueError(f"expected 2-D (H, W); got ndim={img.ndim}")
@@ -30,7 +45,27 @@ def compute_gradients_2d(img: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 def compute_gradients_3d(
     img: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Return ``(g_z, g_y, g_x)`` for a 3-D image ``(D, H, W)``."""
+    """Compute ``(g_z, g_y, g_x)`` finite-difference gradients for a 3-D image.
+
+    Parameters
+    ----------
+    img : np.ndarray
+        3-D image ``(D, H, W)``.
+
+    Returns
+    -------
+    g_z : np.ndarray
+        Gradient along axis 0, shape ``(D - 1, H, W)``.
+    g_y : np.ndarray
+        Gradient along axis 1, shape ``(D, H - 1, W)``.
+    g_x : np.ndarray
+        Gradient along axis 2, shape ``(D, H, W - 1)``.
+
+    Raises
+    ------
+    ValueError
+        If ``img`` is not 3-D.
+    """
     if img.ndim != 3:
         raise ValueError(f"expected 3-D (D, H, W); got ndim={img.ndim}")
     g_z = img[1:, :, :] - img[:-1, :, :]
@@ -40,7 +75,23 @@ def compute_gradients_3d(
 
 
 def compute_gradients(img: np.ndarray) -> tuple[np.ndarray, ...]:
-    """Dispatch to the 2-D or 3-D variant based on ``img.ndim``."""
+    """Dispatch to the 2-D or 3-D gradient variant based on ``img.ndim``.
+
+    Parameters
+    ----------
+    img : np.ndarray
+        2-D ``(H, W)`` or 3-D ``(D, H, W)`` image.
+
+    Returns
+    -------
+    tuple of np.ndarray
+        Per-axis finite-difference gradients (length 2 for 2-D, length 3 for 3-D).
+
+    Raises
+    ------
+    ValueError
+        If ``img.ndim`` is neither 2 nor 3.
+    """
     if img.ndim == 2:
         return compute_gradients_2d(img)
     if img.ndim == 3:

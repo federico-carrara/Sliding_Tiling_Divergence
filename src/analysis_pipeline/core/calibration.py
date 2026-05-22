@@ -23,7 +23,19 @@ from .per_tile import per_image_tile_scan
 
 @dataclass
 class CandidateResult:
-    """Aggregated ``frac_rejected`` for one candidate block size."""
+    """Aggregated ``frac_rejected`` for one candidate block size.
+
+    Attributes
+    ----------
+    block_size : int
+        Candidate block size ``B``.
+    frac_rejected_mean : float
+        Mean per-image ``frac_rejected`` across seeds and images.
+    frac_rejected_sd : float
+        Standard deviation across seeds; ``0.0`` when ``n_seeds == 1``.
+    n_tiles_total : int
+        Total number of valid tiles counted across seeds and images.
+    """
 
     block_size: int
     frac_rejected_mean: float
@@ -33,7 +45,22 @@ class CandidateResult:
 
 @dataclass
 class CalibrationReport:
-    """Top-level output of :func:`calibrate_block_size`."""
+    """Top-level output of :func:`calibrate_block_size`.
+
+    Attributes
+    ----------
+    candidates : list of CandidateResult
+        Per-candidate aggregated metrics, in input order.
+    recommended_block_size : int, optional
+        Smallest candidate ``B`` with ``frac_rejected_mean <= alpha + tolerance``,
+        or ``None`` if no candidate passed.
+    alpha : float
+        Target Type I error rate.
+    tolerance : float
+        Slack on the selection rule.
+    config_summary : dict
+        Snapshot of the calibration configuration.
+    """
 
     candidates: list[CandidateResult]
     recommended_block_size: Optional[int]
@@ -58,12 +85,10 @@ def calibrate_block_size(
     base_seed: int = 0,
     verbose: bool = True,
 ) -> CalibrationReport:
-    """Scan ``candidate_block_sizes`` on a known-H₀ reference and return the
-    smallest ``B`` with ``frac_rejected_mean <= alpha + tolerance``.
+    """Calibrate ``block_size`` on a known-H₀ reference.
 
-    ``reference_images`` is a list of single-channel slices (2-D ``(H, W)``
-    or 3-D ``(D, H, W)``) — the caller is responsible for slicing batch and
-    channel axes out of any loaded prediction. ``tile_size``, ``overlap``,
+    Scans ``candidate_block_sizes`` and returns the smallest ``B`` with
+    ``frac_rejected_mean <= alpha + tolerance``. ``tile_size``, ``overlap``,
     ``strip_width``, ``statistic``, ``num_bins_per_tile``, and
     ``n_permutations`` must match the test-time configuration exactly so
     calibration speaks to the same null distribution the test will use.
@@ -72,6 +97,48 @@ def calibrate_block_size(
     ``n_seeds > 1`` we average ``frac_rejected`` across runs seeded
     ``base_seed + i`` for ``i in range(n_seeds)``. Multi-seed averaging is
     only useful on small references where binomial noise dominates.
+
+    Parameters
+    ----------
+    reference_images : Sequence[np.ndarray]
+        Single-channel slices ``(H, W)`` or ``(D, H, W)`` — the caller is
+        responsible for slicing batch and channel axes out of any loaded
+        prediction.
+    tile_size : Sequence[int]
+        TiledPatching tile size per spatial axis.
+    overlap : Sequence[int]
+        TiledPatching overlap per spatial axis.
+    strip_width : int, default=4
+        Half-width ``N`` of the control strip around each seam.
+    statistic : str, default="kl"
+        Two-sample discrepancy statistic name.
+    n_permutations : int, default=1000
+        Permutations per tile.
+    num_bins_per_tile : int, default=32
+        Histogram bin count for binned statistics (KL, JS).
+    alpha : float, default=0.05
+        Target Type I error rate.
+    tolerance : float, default=0.01
+        Slack on the selection rule.
+    candidate_block_sizes : Sequence[int], default=(1, 2, 4, 8, 16)
+        Candidate ``B`` values to evaluate.
+    n_seeds : int, default=1
+        RNG seeds to average over.
+    base_seed : int, default=0
+        First RNG seed.
+    verbose : bool, default=True
+        If True, print a one-line summary per candidate as the scan runs.
+
+    Returns
+    -------
+    CalibrationReport
+        Per-candidate aggregated metrics plus the recommended ``B``.
+
+    Raises
+    ------
+    ValueError
+        If inputs are empty, ``n_seeds < 1``, or ``alpha + tolerance``
+        falls outside ``(0, 1)``.
     """
     if not reference_images:
         raise ValueError("reference_images is empty")

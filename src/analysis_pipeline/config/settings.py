@@ -22,7 +22,33 @@ Statistic = Literal["kl", "js", "ks", "wasserstein", "mean_abs_ratio"]
 
 
 class PerTileConfig(BaseModel):
-    """Parameters of the per-tile two-sample test."""
+    """Parameters of the per-tile two-sample test.
+
+    Attributes
+    ----------
+    tile_size : list of int
+        TiledPatching tile size per spatial axis (image-pixel units).
+    overlap : list of int
+        TiledPatching overlap per spatial axis (image-pixel units).
+    statistic : {"kl", "js", "ks", "wasserstein", "mean_abs_ratio"}, default="kl"
+        Two-sample discrepancy statistic.
+    strip_width : int, default=4
+        Half-width ``N`` of the control strip around each seam.
+    block_size : int, default=3
+        Contiguous-block size ``B`` for the permutation engine.
+    n_permutations : int, default=1000
+        Number of permutations ``R`` per tile.
+    alpha : float, default=0.05
+        Rejection threshold for the per-tile test.
+    num_bins_per_tile : int, default=32
+        Number of histogram bins for binned statistics (KL, JS).
+    random_seed : int, default=0
+        RNG seed.
+    pool_z_with_xy : bool, default=True
+        If False (reserved for v2), run separate xy and z tests in 3D.
+    channel : int, default=0
+        Channel index to analyse.
+    """
 
     tile_size: list[PositiveInt]
     overlap: list[NonNegativeInt]
@@ -39,6 +65,18 @@ class PerTileConfig(BaseModel):
     @field_validator("n_permutations")
     @classmethod
     def _warn_low_n_permutations(cls, v: int) -> int:
+        """Warn if ``n_permutations`` is too low for usable p-value resolution.
+
+        Parameters
+        ----------
+        v : int
+            Candidate ``n_permutations`` value.
+
+        Returns
+        -------
+        int
+            The validated value (unchanged).
+        """
         if v < 100:
             warnings.warn(
                 f"n_permutations={v} is below the recommended 100; "
@@ -49,7 +87,20 @@ class PerTileConfig(BaseModel):
 
     @model_validator(mode="after")
     def _check_axis_consistency(self) -> Self:
-        """Cross-field checks: matching lengths and the step / strip-width geometry."""
+        """Cross-field validation of axis lengths and step / strip-width geometry.
+
+        Returns
+        -------
+        Self
+            The validated ``PerTileConfig`` instance.
+
+        Raises
+        ------
+        ValueError
+            If ``tile_size`` and ``overlap`` have different lengths, if any
+            ``overlap[i] >= tile_size[i]``, or if any axis step is too small
+            for ``2 * strip_width + 2``.
+        """
         if len(self.tile_size) != len(self.overlap):
             raise ValueError(
                 f"tile_size and overlap must have the same number of axes "
@@ -72,7 +123,23 @@ class PerTileConfig(BaseModel):
 
 
 class AnalysisConfig(BaseModel):
-    """Top-level configuration consumed by the CLI."""
+    """Top-level configuration consumed by the CLI.
+
+    Attributes
+    ----------
+    name : str
+        Model name (used in the report header).
+    dataset : str
+        Dataset name.
+    save_dir : pathlib.Path
+        Directory where the pickled ``MultiMethodReport`` is written.
+    predictions : list of str
+        Prediction file paths (one per method).
+    method_names : list of str
+        Method names matching ``predictions`` one-to-one.
+    per_tile : PerTileConfig
+        Per-tile two-sample test parameters.
+    """
 
     model_config = ConfigDict(protected_namespaces=())
 
@@ -85,6 +152,19 @@ class AnalysisConfig(BaseModel):
 
     @model_validator(mode="after")
     def _check_predictions_and_methods(self) -> Self:
+        """Validate matching counts and the supported number of predictions.
+
+        Returns
+        -------
+        Self
+            The validated ``AnalysisConfig`` instance.
+
+        Raises
+        ------
+        ValueError
+            If ``predictions`` and ``method_names`` have different lengths,
+            or the number of predictions is outside the supported ``[2, 5]`` range.
+        """
         if len(self.predictions) != len(self.method_names):
             raise ValueError(
                 f"Number of predictions ({len(self.predictions)}) must match "
@@ -98,11 +178,21 @@ class AnalysisConfig(BaseModel):
 
 
 def load_config_from_args(args) -> AnalysisConfig:
-    """Build an ``AnalysisConfig`` from parsed CLI ``args``.
+    """Build an :class:`AnalysisConfig` from parsed CLI arguments.
 
     Expects ``args.tile_size`` and ``args.overlap`` to be flat per-axis
     integer lists (the multi-method per-prediction broadcasting is handled
     later inside ``run_gradient_analysis_multi``).
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed CLI arguments produced by ``analyze``'s ``parse_args``.
+
+    Returns
+    -------
+    AnalysisConfig
+        Validated configuration ready to drive the pipeline.
     """
     pred_files = [p.strip() for p in args.predictions.split(",")]
     method_names = [m.strip() for m in args.method_names.split(",")]

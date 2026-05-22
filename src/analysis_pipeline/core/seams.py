@@ -24,12 +24,27 @@ import numpy as np
 def compute_seam_positions(
     axis_size: int, tile_size: int, overlap: int
 ) -> np.ndarray:
-    """Image-pixel positions of stitching seams along one axis.
+    """Compute image-pixel positions of stitching seams along one axis.
 
     A seam is the boundary between two adjacent kept regions in the stitched
     image — equivalently, the first pixel of tile ``k`` (``k >= 1``) in the
     output. Returns an empty array (and emits a warning) when the axis fits
     in a single tile.
+
+    Parameters
+    ----------
+    axis_size : int
+        Size of the image along the axis (image-pixel units).
+    tile_size : int
+        TiledPatching tile size along the axis.
+    overlap : int
+        TiledPatching overlap along the axis.
+
+    Returns
+    -------
+    np.ndarray
+        1-D integer array of seam positions in image-pixel coordinates; empty
+        if ``axis_size <= tile_size``.
     """
     if axis_size <= tile_size:
         warnings.warn(
@@ -58,6 +73,22 @@ def assert_shape_consistent(
 
     Single-tile axes (``axis_size <= tile_size``) are not checked here; they
     are handled by :func:`compute_seam_positions` via warn-and-skip.
+
+    Parameters
+    ----------
+    axis_size : int
+        Size of the image along the axis (image-pixel units).
+    tile_size : int
+        TiledPatching tile size along the axis.
+    overlap : int
+        TiledPatching overlap along the axis.
+    axis_label : str
+        Human-readable axis label used in the assertion message.
+
+    Raises
+    ------
+    AssertionError
+        If ``axis_size`` does not match the clean tiling formula.
     """
     if axis_size <= tile_size:
         return
@@ -78,5 +109,15 @@ def pixel_positions_to_grad_indices(positions: np.ndarray) -> np.ndarray:
     ``grad[..., p, ...] = imgs[..., p + 1, ...] - imgs[..., p, ...]``.
     A seam at pixel ``j`` (the step between pixel ``j - 1`` and pixel
     ``j``) therefore sits at gradient index ``j - 1``.
+
+    Parameters
+    ----------
+    positions : np.ndarray
+        Image-pixel positions (integer array of any shape).
+
+    Returns
+    -------
+    np.ndarray
+        Gradient-array indices (``positions - 1``).
     """
     return positions - 1

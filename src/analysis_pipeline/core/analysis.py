@@ -24,10 +24,28 @@ def _broadcast_per_method_spec(
 ) -> list[list[int]]:
     """Normalise a per-axis or per-method tiling spec to a per-method list.
 
-    Accepts:
-      - a single per-axis spec (e.g. ``[64, 64]`` or ``[4, 64, 64]``) — applied
-        to every method;
-      - a per-method list of per-axis specs (e.g. ``[[64, 64], [32, 32]]``).
+    Accepts a single per-axis spec (e.g. ``[64, 64]`` or ``[4, 64, 64]``),
+    applied to every method, or a per-method list of per-axis specs
+    (e.g. ``[[64, 64], [32, 32]]``).
+
+    Parameters
+    ----------
+    spec : list
+        Per-axis or per-method spec.
+    n_methods : int
+        Number of methods to broadcast to.
+    name : str
+        Spec name used in error messages.
+
+    Returns
+    -------
+    list of list of int
+        Per-method list of per-axis integer specs (length ``n_methods``).
+
+    Raises
+    ------
+    ValueError
+        If ``spec`` is empty or has the wrong per-method length.
     """
     if not isinstance(spec, (list, tuple)) or len(spec) == 0:
         raise ValueError(f"{name} must be a non-empty list/tuple, got {spec!r}")
@@ -58,16 +76,57 @@ def run_gradient_analysis_multi(
     pool_z_with_xy: bool = True,
     channel: int = 0,
 ) -> MultiMethodReport:
-    """Run the per-tile metric on N predictions and return a report.
+    """Run the per-tile metric on N predictions and return a multi-method report.
 
     Predictions are channel-first: ``(N, C, H, W)`` for 2-D or
     ``(N, C, D, H, W)`` for 3-D. ``tile_size`` and ``overlap`` are per
     spatial axis and must match the TiledPatching configuration used to
     produce the predictions.
 
-    ``save_dir``, if not None, receives a pickled ``MultiMethodReport`` at
-    ``save_dir / per_tile_report.pkl``. No other files are written — raw
-    per-tile dumps and visualizations are deferred to v2.
+    If ``save_dir`` is not None, the report is pickled to
+    ``save_dir / per_tile_report.pkl``. No other files are written.
+
+    Parameters
+    ----------
+    predictions_list : list of np.ndarray
+        One channel-first prediction array per method.
+    method_names : list of str
+        Method names matching ``predictions_list`` one-to-one.
+    save_dir : pathlib.Path
+        Directory for the pickled report (created if missing); pass ``None``
+        to skip writing.
+    tile_size : list
+        Either a single per-axis spec, or a per-method list of per-axis specs.
+    overlap : list
+        Either a single per-axis spec, or a per-method list of per-axis specs.
+    statistic : str, default="kl"
+        Two-sample discrepancy statistic name.
+    strip_width : int, default=4
+        Control-strip half-width ``N``.
+    block_size : int, default=3
+        Contiguous-block size ``B`` for permutation.
+    n_permutations : int, default=1000
+        Number of permutations ``R`` per tile.
+    alpha : float, default=0.05
+        Rejection threshold for the per-tile test.
+    num_bins_per_tile : int, default=32
+        Histogram bin count for binned statistics (KL, JS).
+    random_seed : int, default=0
+        RNG seed.
+    pool_z_with_xy : bool, default=True
+        If False (reserved for v2), run separate xy and z tests in 3D.
+    channel : int, default=0
+        Channel index to analyse.
+
+    Returns
+    -------
+    MultiMethodReport
+        Aggregated multi-method report.
+
+    Raises
+    ------
+    ValueError
+        If shapes or per-method specs are inconsistent with the predictions.
     """
     n_methods = len(predictions_list)
     if len(method_names) != n_methods:
@@ -174,6 +233,17 @@ def run_gradient_analysis_multi(
 def _print_summary(
     report: MultiMethodReport, method_names: list[str], statistic: str
 ) -> None:
+    """Print a human-readable summary of a multi-method report.
+
+    Parameters
+    ----------
+    report : MultiMethodReport
+        Report to summarise.
+    method_names : list of str
+        Methods to display, in display order.
+    statistic : str
+        Statistic name shown in the header.
+    """
     bar = "=" * 60
     print()
     print(bar)

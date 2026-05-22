@@ -23,33 +23,61 @@ from .seams import compute_seam_positions
 
 @dataclass(frozen=True)
 class Seam:
-    """One stitching seam owned by a tile along a specific spatial axis."""
+    """One stitching seam owned by a tile along a specific spatial axis.
+
+    Attributes
+    ----------
+    axis : int
+        Spatial-axis index (0=y,1=x in 2D; 0=z,1=y,2=x in 3D).
+    pixel : int
+        Image-pixel position of the seam along ``axis``.
+    grad_idx : int
+        Across-seam finite-difference index (``pixel - 1``).
+    """
 
     axis: int
-    """Spatial-axis index (0=y,1=x in 2D; 0=z,1=y,2=x in 3D)."""
     pixel: int
-    """Image-pixel position of the seam along ``axis``."""
     grad_idx: int
-    """Across-seam finite-difference index (``pixel - 1``)."""
 
 
 @dataclass(frozen=True)
 class Tile:
-    """One kept region and the seams it owns."""
+    """One kept region and the seams it owns.
+
+    Attributes
+    ----------
+    coord : tuple of int
+        Multi-index in the kept-region grid.
+    ranges : tuple of (int, int)
+        Per-axis ``(lo, hi)`` pixel ranges.
+    seams : tuple of Seam
+        Owned seams.
+    """
 
     coord: tuple[int, ...]
-    """Multi-index in the kept-region grid."""
     ranges: tuple[tuple[int, int], ...]
-    """Per-axis (lo, hi) pixel ranges."""
     seams: tuple[Seam, ...]
-    """Owned seams."""
 
     @property
     def n_seams(self) -> int:
+        """Return the number of owned seams.
+
+        Returns
+        -------
+        int
+            Number of seams in ``seams``.
+        """
         return len(self.seams)
 
     @property
     def n_axes(self) -> int:
+        """Return the number of spatial axes for this tile.
+
+        Returns
+        -------
+        int
+            Number of entries in ``ranges``.
+        """
         return len(self.ranges)
 
 
@@ -59,14 +87,31 @@ def enumerate_tiles(
     overlap: Sequence[int],
 ) -> list[Tile]:
     """Enumerate kept-region tiles for a single image's spatial shape.
-    
-    ``image_shape`` is the spatial shape only — ``(H, W)`` for 2D or
-    ``(D, H, W)`` for 3D; channel and batch axes belong upstream.
 
-    Returns a flat list of ``Tile`` instances in C-order over the per-axis
-    region grid. Tiles along an axis with zero seams (axis fits in a single
-    tile) have no owned seams from that axis; callers may filter on
-    ``Tile.n_seams``.
+    ``image_shape`` is the spatial shape only — ``(H, W)`` for 2D or
+    ``(D, H, W)`` for 3D; channel and batch axes belong upstream. Tiles
+    along an axis with zero seams (axis fits in a single tile) have no
+    owned seams from that axis; callers may filter on ``Tile.n_seams``.
+
+    Parameters
+    ----------
+    image_shape : Sequence[int]
+        Spatial shape of the image, ``(H, W)`` in 2D or ``(D, H, W)`` in 3D.
+    tile_size : Sequence[int]
+        TiledPatching tile size per spatial axis (image-pixel units).
+    overlap : Sequence[int]
+        TiledPatching overlap per spatial axis (image-pixel units).
+
+    Returns
+    -------
+    list of Tile
+        Tiles in C-order over the per-axis kept-region grid.
+
+    Raises
+    ------
+    ValueError
+        If ``image_shape``, ``tile_size`` and ``overlap`` do not all have
+        the same length.
     """
     if not (len(image_shape) == len(tile_size) == len(overlap)):
         raise ValueError(

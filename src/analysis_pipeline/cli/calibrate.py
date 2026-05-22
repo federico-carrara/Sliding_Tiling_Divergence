@@ -23,6 +23,23 @@ from ..utils import ensure_4d, load_prediction
 
 
 def _parse_csv_ints(value: str) -> list[int]:
+    """Parse a comma-separated string into a list of ints.
+
+    Parameters
+    ----------
+    value : str
+        Comma-separated string of integers.
+
+    Returns
+    -------
+    list of int
+        Parsed integers in input order.
+
+    Raises
+    ------
+    argparse.ArgumentTypeError
+        If any token cannot be parsed as an integer.
+    """
     try:
         return [int(v) for v in value.split(",")]
     except ValueError as e:
@@ -32,6 +49,13 @@ def _parse_csv_ints(value: str) -> list[int]:
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for the block-size calibration CLI.
+
+    Returns
+    -------
+    argparse.Namespace
+        Parsed arguments.
+    """
     parser = argparse.ArgumentParser(
         description=(
             "Calibrate the per-tile permutation test's block_size on a known-"
@@ -117,8 +141,29 @@ def parse_args() -> argparse.Namespace:
 
 
 def _load_reference_images(paths: list[str], channel: int) -> list[np.ndarray]:
-    """Load each reference path → channel-first ``(N, C, H, W)`` → list of
-    single-channel slices ``(H, W)`` or ``(D, H, W)``."""
+    """Load reference files and return a flat list of single-channel slices.
+
+    Each reference path is loaded, normalised to channel-first
+    ``(N, C, H, W)`` (or ``(N, C, D, H, W)`` for 3D), then split into
+    per-sample, single-channel slices.
+
+    Parameters
+    ----------
+    paths : list of str
+        Reference file paths (``.tiff``/``.pkl``).
+    channel : int
+        Channel index to extract from each loaded array.
+
+    Returns
+    -------
+    list of np.ndarray
+        Single-channel slices of shape ``(H, W)`` or ``(D, H, W)``.
+
+    Raises
+    ------
+    ValueError
+        If ``channel`` is out of range for any loaded file.
+    """
     images: list[np.ndarray] = []
     for path in paths:
         print(f"  loading {path}")
@@ -137,6 +182,15 @@ def _load_reference_images(paths: list[str], channel: int) -> list[np.ndarray]:
 
 
 def _print_summary(report, save_dir: Path) -> None:
+    """Print a human-readable summary of the calibration report.
+
+    Parameters
+    ----------
+    report : CalibrationReport
+        The calibration report to summarise.
+    save_dir : pathlib.Path
+        Directory the report was pickled to (referenced in the output).
+    """
     bar = "=" * 72
     threshold = report.alpha + report.tolerance
     print()
@@ -178,6 +232,13 @@ def _print_summary(report, save_dir: Path) -> None:
 
 
 def main() -> int:
+    """Run the block-size calibration pipeline from CLI arguments.
+
+    Returns
+    -------
+    int
+        Process exit code (``0`` on success, ``1`` on loading or calibration error).
+    """
     args = parse_args()
 
     print("=" * 72)

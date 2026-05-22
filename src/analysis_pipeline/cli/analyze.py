@@ -20,7 +20,25 @@ from ..utils import ensure_4d, load_prediction
 
 
 def parse_comma_separated_ints(value: str) -> list[int]:
-    """Parse a CSV of ints. Supports ``32`` → ``[32]`` and ``4,32,32`` → ``[4, 32, 32]``."""
+    """Parse a comma-separated string into a list of ints.
+
+    Supports ``"32"`` → ``[32]`` and ``"4,32,32"`` → ``[4, 32, 32]``.
+
+    Parameters
+    ----------
+    value : str
+        Comma-separated string of integers.
+
+    Returns
+    -------
+    list of int
+        Parsed integers in input order.
+
+    Raises
+    ------
+    argparse.ArgumentTypeError
+        If any token cannot be parsed as an integer.
+    """
     try:
         return [int(v) for v in value.split(",")]
     except ValueError as e:
@@ -30,7 +48,13 @@ def parse_comma_separated_ints(value: str) -> list[int]:
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments."""
+    """Parse command-line arguments for the per-tile analysis CLI.
+
+    Returns
+    -------
+    argparse.Namespace
+        Parsed arguments.
+    """
     parser = argparse.ArgumentParser(
         description=(
             "Per-tile two-sample test for stitching artifacts. Compares 2-5 "
@@ -115,6 +139,13 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    """Run the per-tile metric pipeline from CLI arguments.
+
+    Returns
+    -------
+    int
+        Process exit code (``0`` on success, ``1`` on configuration or loading error).
+    """
     args = parse_args()
 
     try:

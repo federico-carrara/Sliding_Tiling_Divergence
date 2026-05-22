@@ -16,7 +16,23 @@ import numpy as np
 
 @dataclass
 class TileResult:
-    """Outcome of the permutation test for one kept-region tile."""
+    """Outcome of the permutation test for one kept-region tile.
+
+    Attributes
+    ----------
+    coord : tuple of int
+        Multi-index in the kept-region grid.
+    n_seams : int
+        Number of seams owned by the tile.
+    T_obs : float
+        Observed statistic value (``nan`` for skipped tiles).
+    p : float
+        Phipson–Smyth p-value (``nan`` for skipped tiles).
+    n_seam_samples : int
+        Total number of seam samples used in the test.
+    n_control_samples : int
+        Total number of control samples used in the test.
+    """
 
     coord: tuple[int, ...]
     n_seams: int
@@ -28,7 +44,17 @@ class TileResult:
 
 @dataclass
 class ImageReport:
-    """Per-image roll-up of tile-level scores."""
+    """Per-image roll-up of tile-level scores.
+
+    Attributes
+    ----------
+    tiles : list of TileResult
+        Per-tile outcomes (including skipped tiles).
+    median_T : float
+        Median of valid ``T_obs`` across tiles (``nan`` if none are valid).
+    frac_rejected : float
+        Fraction of valid tiles with ``p < alpha`` (``nan`` if none are valid).
+    """
 
     tiles: list[TileResult]
     median_T: float
@@ -37,7 +63,17 @@ class ImageReport:
 
 @dataclass
 class MethodReport:
-    """Per-method roll-up across all images for that method."""
+    """Per-method roll-up across all images for that method.
+
+    Attributes
+    ----------
+    images : list of ImageReport
+        Per-image reports for this method.
+    mean_median_T : float
+        Mean of valid per-image ``median_T`` values.
+    mean_frac_rejected : float
+        Mean of valid per-image ``frac_rejected`` values.
+    """
 
     images: list[ImageReport] = field(default_factory=list)
     mean_median_T: float = float("nan")
@@ -46,7 +82,15 @@ class MethodReport:
 
 @dataclass
 class MultiMethodReport:
-    """Top-level result of a multi-method per-tile run."""
+    """Top-level result of a multi-method per-tile run.
+
+    Attributes
+    ----------
+    methods : dict of str to MethodReport
+        Per-method reports keyed by method name.
+    config_summary : dict, optional
+        Snapshot of the run configuration.
+    """
 
     methods: dict[str, MethodReport] = field(default_factory=dict)
     config_summary: Optional[dict] = None
@@ -56,6 +100,23 @@ def aggregate_image(
     tiles: list[TileResult],
     alpha: float,
 ) -> ImageReport:
+    """Aggregate per-tile outcomes into an :class:`ImageReport`.
+
+    Tiles with ``NaN`` ``T_obs`` or ``p`` (insufficient seams) are excluded
+    from the median and rejection-rate computations.
+
+    Parameters
+    ----------
+    tiles : list of TileResult
+        Per-tile outcomes for the image.
+    alpha : float
+        Rejection threshold.
+
+    Returns
+    -------
+    ImageReport
+        Per-image roll-up.
+    """
     valid_T = np.array(
         [t.T_obs for t in tiles if not np.isnan(t.T_obs)], dtype=np.float64
     )
@@ -74,6 +135,20 @@ def aggregate_image(
 
 
 def aggregate_method(images: list[ImageReport]) -> MethodReport:
+    """Aggregate per-image reports into a per-method :class:`MethodReport`.
+
+    Per-image scalars that are ``NaN`` are excluded from the mean.
+
+    Parameters
+    ----------
+    images : list of ImageReport
+        Per-image reports for the method.
+
+    Returns
+    -------
+    MethodReport
+        Per-method roll-up; an empty report if ``images`` is empty.
+    """
     if not images:
         return MethodReport()
     medians = np.array(

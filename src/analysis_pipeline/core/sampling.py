@@ -31,19 +31,41 @@ from .tiles import Tile
 
 @dataclass
 class TileGradientSample:
-    """Per-tile seam and control gradient samples, kept as per-slice 1-D arrays."""
+    """Per-tile seam and control gradient samples, kept as per-slice 1-D arrays.
+
+    Attributes
+    ----------
+    seam_slices : list of np.ndarray
+        One 1-D array per owned seam, of across-seam gradients along the seam line.
+    control_slices : list of np.ndarray
+        ``2 * strip_width`` 1-D arrays per owned seam, one per control-strip offset.
+    """
 
     seam_slices: list[np.ndarray]
     control_slices: list[np.ndarray]
 
     @property
     def seam_sample(self) -> np.ndarray:
+        """Concatenate all seam slices into a single 1-D array.
+
+        Returns
+        -------
+        np.ndarray
+            Concatenated seam values, or an empty array if no slices were collected.
+        """
         if not self.seam_slices:
             return np.array([], dtype=np.float64)
         return np.concatenate(self.seam_slices)
 
     @property
     def control_sample(self) -> np.ndarray:
+        """Concatenate all control slices into a single 1-D array.
+
+        Returns
+        -------
+        np.ndarray
+            Concatenated control values, or an empty array if no slices were collected.
+        """
         if not self.control_slices:
             return np.array([], dtype=np.float64)
         return np.concatenate(self.control_slices)
@@ -55,14 +77,29 @@ def _slice_along(
     axis: int,
     grad_idx: int,
 ) -> np.ndarray:
-    """Return ``gradient`` with ``axis`` fixed to ``grad_idx`` and the other axes
-    sliced to ``ranges``. The result is flattened to 1-D.
-    
-    ``gradient`` is a per-axis gradient array whose shape matches the image except
-    that axis ``axis`` is shorter by 1 (finite differences along that axis).
-    ``ranges`` are image-pixel ranges per spatial axis; we apply them
+    """Slice a per-axis gradient at a fixed across-axis index and the tile ranges.
+
+    ``gradient`` is a per-axis gradient array whose shape matches the image
+    except that axis ``axis`` is shorter by 1 (finite differences along that
+    axis). ``ranges`` are image-pixel ranges per spatial axis; we apply them
     verbatim to every axis except ``axis``, where we instead pick the single
-    gradient index.
+    gradient index. The result is flattened to 1-D.
+
+    Parameters
+    ----------
+    gradient : np.ndarray
+        Finite-difference gradient array along ``axis``.
+    ranges : tuple of (int, int)
+        Per-axis ``(lo, hi)`` image-pixel ranges of the tile.
+    axis : int
+        Spatial axis index to fix at ``grad_idx``.
+    grad_idx : int
+        Gradient-array index along ``axis``.
+
+    Returns
+    -------
+    np.ndarray
+        Contiguous 1-D array of sliced gradient values.
     """
     sl: list[slice | int] = []
     for a in range(gradient.ndim):
@@ -81,14 +118,29 @@ def sample_tile(
 ) -> TileGradientSample:
     """Build the per-tile seam/control sample.
 
-    ``gradients[a]`` is the finite-difference gradient along spatial axis
-    ``a``, with the differenced axis one element shorter than the image. For
-    2D this is ``(g_y, g_x)`` with shapes ``(H-1, W)``, ``(H, W-1)``; for 3D
-    ``(g_z, g_y, g_x)`` with the analogous shapes.
+    For each owned seam, collect the 1-D across-seam gradient slice lying on
+    the seam line plus ``2 * strip_width`` parallel control strips at offsets
+    ``{-N, ..., -1, +1, ..., +N}`` along the seam's across-axis.
 
     Pre-condition: along every owned-seam axis, ``step >= 2*strip_width + 2``
     so that all ``2 * strip_width`` strip offsets land inside the gradient.
     The orchestrator enforces this.
+
+    Parameters
+    ----------
+    gradients : tuple of np.ndarray
+        Per-axis finite-difference gradient arrays. For 2D this is
+        ``(g_y, g_x)`` with shapes ``(H-1, W)`` and ``(H, W-1)``; for 3D
+        ``(g_z, g_y, g_x)`` with the analogous shapes.
+    tile : Tile
+        Tile whose owned seams drive the sampling.
+    strip_width : int
+        Half-width ``N`` of the control strip around each seam.
+
+    Returns
+    -------
+    TileGradientSample
+        Container with the per-slice seam and control arrays.
     """
     seam_slices: list[np.ndarray] = []
     control_slices: list[np.ndarray] = []

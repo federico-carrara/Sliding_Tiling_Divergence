@@ -35,6 +35,23 @@ EPS = 1e-12
 def _split_into_blocks(
     slices: list[np.ndarray], block_size: int
 ) -> list[np.ndarray]:
+    """Split each input slice into contiguous blocks of length ``block_size``.
+
+    Empty slices are skipped. The trailing partial block of each slice is
+    kept to preserve all data; blocks never span slice boundaries.
+
+    Parameters
+    ----------
+    slices : list of np.ndarray
+        1-D arrays to split (e.g. per-seam or per-strip gradient samples).
+    block_size : int
+        Target block length ``B``.
+
+    Returns
+    -------
+    list of np.ndarray
+        Concatenated list of blocks across all input slices.
+    """
     blocks: list[np.ndarray] = []
     for s in slices:
         if s.size == 0:
@@ -47,7 +64,22 @@ def _split_into_blocks(
 def _build_permutations(
     n_blocks: int, n_permutations: int, rng: np.random.Generator
 ) -> np.ndarray:
-    """Return a ``(R, n_blocks)`` matrix of row-wise random permutations."""
+    """Build a row-wise random permutation matrix.
+
+    Parameters
+    ----------
+    n_blocks : int
+        Number of block indices to permute per row.
+    n_permutations : int
+        Number of permutations ``R``.
+    rng : numpy.random.Generator
+        Random generator used for the permutation.
+
+    Returns
+    -------
+    np.ndarray
+        ``(R, n_blocks)`` integer matrix of permuted block indices.
+    """
     base = np.tile(np.arange(n_blocks), (n_permutations, 1))
     return rng.permuted(base, axis=1)
 
@@ -60,7 +92,33 @@ def _binned_path(
     name: str,
     num_bins: int,
 ) -> tuple[float, np.ndarray]:
-    """Histogram-based statistic with joint per-tile bin edges."""
+    """Vectorized binned-statistic path (KL or JS) on per-tile joint bin edges.
+
+    Parameters
+    ----------
+    all_blocks : list of np.ndarray
+        Concatenated seam blocks followed by control blocks.
+    n_seam_blocks : int
+        Number of leading seam blocks in ``all_blocks``.
+    perms : np.ndarray
+        ``(R, n_blocks)`` permutation index matrix.
+    name : {"kl", "js"}
+        Which binned statistic to compute.
+    num_bins : int
+        Histogram bin count for the joint per-tile edges.
+
+    Returns
+    -------
+    T_obs : float
+        Observed statistic value on the unpermuted split.
+    T_null : np.ndarray
+        ``(R,)`` array of permutation-null statistic values.
+
+    Raises
+    ------
+    ValueError
+        If ``name`` is not one of the supported binned statistics.
+    """
     all_values = np.concatenate(all_blocks)
     bin_edges = np.histogram_bin_edges(all_values, bins=num_bins)
 
@@ -73,11 +131,22 @@ def _binned_path(
         block_lengths[i] = b.size
 
     def _from_blocks(seam_block_idx: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """Aggregate (seam_hist, control_hist) probabilities under one mask.
+        """Aggregate seam and control probability histograms for one mask.
 
         Accepts a 1-D index for the observed call and a 2-D ``(R, k)`` index
-        for permutations; returns the matching ``(.., n_bins)`` probability
-        arrays.
+        for permutations.
+
+        Parameters
+        ----------
+        seam_block_idx : np.ndarray
+            1-D ``(k,)`` or 2-D ``(R, k)`` block indices assigned to "seam".
+
+        Returns
+        -------
+        p_s : np.ndarray
+            Seam probability histograms of shape ``(.., n_bins)``.
+        p_c : np.ndarray
+            Control probability histograms of shape ``(.., n_bins)``.
         """
         seam_hist = block_hists[seam_block_idx].sum(axis=-2)
         control_hist = block_hists.sum(axis=0) - seam_hist
@@ -120,11 +189,42 @@ def _abs_ratio_path(
     n_seam_blocks: int,
     perms: np.ndarray,
 ) -> tuple[float, np.ndarray]:
+    """Vectorized fast path for the mean-abs-ratio statistic.
+
+    Parameters
+    ----------
+    all_blocks : list of np.ndarray
+        Concatenated seam blocks followed by control blocks.
+    n_seam_blocks : int
+        Number of leading seam blocks in ``all_blocks``.
+    perms : np.ndarray
+        ``(R, n_blocks)`` permutation index matrix.
+
+    Returns
+    -------
+    T_obs : float
+        Observed statistic value on the unpermuted split.
+    T_null : np.ndarray
+        ``(R,)`` array of permutation-null statistic values.
+    """
     n_blocks = len(all_blocks)
     block_abs = np.array([float(np.abs(b).sum()) for b in all_blocks])
     block_len = np.array([b.size for b in all_blocks], dtype=np.int64)
 
     def _ratio(seam_block_idx: np.ndarray) -> np.ndarray:
+        """Aggregate the mean-abs-ratio statistic for one block-label mask.
+
+        Parameters
+        ----------
+        seam_block_idx : np.ndarray
+            1-D ``(k,)`` or 2-D ``(R, k)`` block indices assigned to "seam".
+
+        Returns
+        -------
+        np.ndarray
+            Scalar (1-D input) or ``(R,)`` (2-D input) ratio
+            ``mean(|seam|) / mean(|control|)``.
+        """
         sum_s = block_abs[seam_block_idx].sum(axis=-1)
         sum_c = block_abs.sum() - sum_s
         n_s = block_len[seam_block_idx].sum(axis=-1)
@@ -143,6 +243,28 @@ def _scalar_path(
     stat_spec: StatisticSpec,
     stat_kwargs: dict,
 ) -> tuple[float, np.ndarray]:
+    """Fallback Python-loop path for statistics without a vectorized fast path.
+
+    Parameters
+    ----------
+    all_blocks : list of np.ndarray
+        Concatenated seam blocks followed by control blocks.
+    n_seam_blocks : int
+        Number of leading seam blocks in ``all_blocks``.
+    perms : np.ndarray
+        ``(R, n_blocks)`` permutation index matrix.
+    stat_spec : StatisticSpec
+        Statistic specification carrying the callable ``fn``.
+    stat_kwargs : dict
+        Extra keyword arguments forwarded to ``stat_spec.fn``.
+
+    Returns
+    -------
+    T_obs : float
+        Observed statistic value on the unpermuted split.
+    T_null : np.ndarray
+        ``(R,)`` array of permutation-null statistic values.
+    """
     n_blocks = len(all_blocks)
     seam_obs = np.concatenate(all_blocks[:n_seam_blocks])
     control_obs = np.concatenate(all_blocks[n_seam_blocks:])
@@ -168,14 +290,41 @@ def permutation_pvalue(
     rng: np.random.Generator,
     stat_kwargs: Optional[dict] = None,
 ) -> tuple[float, float, np.ndarray]:
-    """Run the block permutation test.
+    """Run the block permutation test on a single tile.
 
-    Returns ``(T_obs, p, T_null)``. ``p`` uses Phipson–Smyth:
-    ``(1 + #{T_null >= T_obs}) / (1 + R)``.
+    The p-value uses Phipson–Smyth
+    ``p = (1 + #{T_null >= T_obs}) / (1 + R)`` to avoid a hard zero.
 
-    If either side has zero non-empty blocks the test cannot run and we
-    return ``(nan, nan, empty)`` — the orchestrator records these as
-    skipped tiles.
+    If either side has zero non-empty blocks the test cannot run and the
+    function returns ``(nan, nan, empty)`` — the orchestrator records these
+    as skipped tiles.
+
+    Parameters
+    ----------
+    seam_slices : list of np.ndarray
+        Per-seam 1-D arrays of across-seam gradients.
+    control_slices : list of np.ndarray
+        Per-strip 1-D arrays of control gradients.
+    stat_spec : StatisticSpec
+        Statistic specification (name, callable, vectorization kind, defaults).
+    block_size : int
+        Contiguous-block size ``B`` for permutation.
+    n_permutations : int
+        Number of permutations ``R``.
+    rng : numpy.random.Generator
+        Random generator used to build the permutation matrix.
+    stat_kwargs : dict, optional
+        Extra keyword arguments forwarded to ``stat_spec.fn`` (merged with
+        ``stat_spec.default_kwargs``).
+
+    Returns
+    -------
+    T_obs : float
+        Observed statistic value, or ``nan`` if the test was skipped.
+    p : float
+        Phipson–Smyth p-value, or ``nan`` if the test was skipped.
+    T_null : np.ndarray
+        ``(R,)`` permutation-null distribution, or an empty array if skipped.
     """
     stat_kwargs = dict(stat_kwargs or {})
     for k, v in stat_spec.default_kwargs.items():

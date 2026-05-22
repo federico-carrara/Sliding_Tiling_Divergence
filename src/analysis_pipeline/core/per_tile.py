@@ -22,6 +22,22 @@ from .tiles import enumerate_tiles
 def _validate_step_vs_strip(
     tile_size: Sequence[int], overlap: Sequence[int], strip_width: int
 ) -> None:
+    """Validate that each axis has enough step to fit the full control strip.
+
+    Parameters
+    ----------
+    tile_size : Sequence[int]
+        Per-axis tile size.
+    overlap : Sequence[int]
+        Per-axis overlap.
+    strip_width : int
+        Half-width ``N`` of the control strip.
+
+    Raises
+    ------
+    ValueError
+        If on any axis ``tile_size - overlap < 2 * strip_width + 2``.
+    """
     for i, (ts, ov) in enumerate(zip(tile_size, overlap, strict=True)):
         step = ts - ov
         if step < 2 * strip_width + 2:
@@ -47,10 +63,42 @@ def per_image_tile_scan(
 ) -> ImageReport:
     """Run the per-tile test on one single-channel image slice.
 
-    ``image`` is 2-D ``(H, W)`` or 3-D ``(D, H, W)`` — no batch or channel
-    axes. ``tile_size`` and ``overlap`` are per spatial axis. The caller is
-    responsible for slicing the per-method ``(N, C, ...)`` prediction down
-    to the single-image, single-channel array we operate on.
+    The caller is responsible for slicing the per-method ``(N, C, ...)``
+    prediction down to the single-image, single-channel array we operate on.
+
+    Parameters
+    ----------
+    image : np.ndarray
+        2-D ``(H, W)`` or 3-D ``(D, H, W)`` image — no batch or channel axes.
+    tile_size : Sequence[int]
+        TiledPatching tile size per spatial axis.
+    overlap : Sequence[int]
+        TiledPatching overlap per spatial axis.
+    strip_width : int
+        Half-width ``N`` of the control strip around each seam.
+    block_size : int
+        Contiguous-block size ``B`` for permutation.
+    n_permutations : int
+        Number of permutations ``R`` per tile.
+    statistic : str
+        Name of the two-sample discrepancy statistic.
+    alpha : float
+        Rejection threshold for ``frac_rejected`` aggregation.
+    num_bins_per_tile : int
+        Histogram bin count for binned statistics (KL, JS).
+    rng : numpy.random.Generator
+        Random generator for the permutation engine.
+
+    Returns
+    -------
+    ImageReport
+        Per-tile results aggregated into image-level scalars.
+
+    Raises
+    ------
+    ValueError
+        If ``image`` is not 2-D or 3-D, or the lengths of ``tile_size`` and
+        ``overlap`` do not match ``image.ndim``.
     """
     if image.ndim not in (2, 3):
         raise ValueError(
