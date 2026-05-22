@@ -15,9 +15,6 @@ engine in :mod:`permutation` can partition each slice independently — blocks
 must not span slice boundaries, otherwise the test would carry spurious
 "coherence" between unrelated seams.
 
-Per-axis labelling is preserved so the anisotropy diagnostic can split the
-control sample by seam axis.
-
 The orchestrator is expected to have validated ``step >= 2*strip_width + 2``
 along every axis before calling here, so all strip indices are guaranteed to
 land inside the gradient arrays.
@@ -33,13 +30,11 @@ from .tiles import Tile
 
 
 @dataclass
-class TileSample:
-    """Per-tile seam and control samples, kept as per-slice 1-D arrays."""
+class TileGradientSample:
+    """Per-tile seam and control gradient samples, kept as per-slice 1-D arrays."""
 
     seam_slices: list[np.ndarray]
-    seam_axes: list[int]
     control_slices: list[np.ndarray]
-    control_axes: list[int]
 
     @property
     def seam_sample(self) -> np.ndarray:
@@ -53,43 +48,37 @@ class TileSample:
             return np.array([], dtype=np.float64)
         return np.concatenate(self.control_slices)
 
-    def per_axis_control(self, axis: int) -> np.ndarray:
-        arrs = [s for s, a in zip(self.control_slices, self.control_axes) if a == axis]
-        if not arrs:
-            return np.array([], dtype=np.float64)
-        return np.concatenate(arrs)
-
 
 def _slice_along(
-    g: np.ndarray,
+    gradient: np.ndarray,
     ranges: tuple[tuple[int, int], ...],
     axis: int,
     grad_idx: int,
 ) -> np.ndarray:
-    """Return ``g`` with ``axis`` fixed to ``grad_idx`` and the other axes
+    """Return ``gradient`` with ``axis`` fixed to ``grad_idx`` and the other axes
     sliced to ``ranges``. The result is flattened to 1-D.
-
-    ``g`` is a per-axis gradient array whose shape matches the image except
+    
+    ``gradient`` is a per-axis gradient array whose shape matches the image except
     that axis ``axis`` is shorter by 1 (finite differences along that axis).
     ``ranges`` are image-pixel ranges per spatial axis; we apply them
     verbatim to every axis except ``axis``, where we instead pick the single
     gradient index.
     """
     sl: list[slice | int] = []
-    for a in range(g.ndim):
+    for a in range(gradient.ndim):
         if a == axis:
             sl.append(int(grad_idx))
         else:
             lo, hi = ranges[a]
             sl.append(slice(int(lo), int(hi)))
-    return np.ascontiguousarray(g[tuple(sl)]).ravel()
+    return np.ascontiguousarray(gradient[tuple(sl)]).ravel()
 
 
 def sample_tile(
     gradients: tuple[np.ndarray, ...],
     tile: Tile,
     strip_width: int,
-) -> TileSample:
+) -> TileGradientSample:
     """Build the per-tile seam/control sample.
 
     ``gradients[a]`` is the finite-difference gradient along spatial axis
@@ -102,9 +91,7 @@ def sample_tile(
     The orchestrator enforces this.
     """
     seam_slices: list[np.ndarray] = []
-    seam_axes: list[int] = []
     control_slices: list[np.ndarray] = []
-    control_axes: list[int] = []
 
     for seam in tile.seams:
         a = seam.axis
@@ -112,7 +99,6 @@ def sample_tile(
         g_idx = seam.grad_idx
 
         seam_slices.append(_slice_along(g, tile.ranges, a, g_idx))
-        seam_axes.append(a)
 
         for offset in range(-strip_width, strip_width + 1):
             if offset == 0:
@@ -120,11 +106,5 @@ def sample_tile(
             control_slices.append(
                 _slice_along(g, tile.ranges, a, g_idx + offset)
             )
-            control_axes.append(a)
 
-    return TileSample(
-        seam_slices=seam_slices,
-        seam_axes=seam_axes,
-        control_slices=control_slices,
-        control_axes=control_axes,
-    )
+    return TileGradientSample(seam_slices=seam_slices, control_slices=control_slices)

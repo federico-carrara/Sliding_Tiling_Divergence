@@ -25,18 +25,24 @@ from .seams import compute_seam_positions
 class Seam:
     """One stitching seam owned by a tile along a specific spatial axis."""
 
-    axis: int           # spatial-axis index (0=y,1=x in 2D; 0=z,1=y,2=x in 3D)
-    pixel: int          # image-pixel position of the seam along ``axis``
-    grad_idx: int       # = pixel - 1; across-seam finite-difference index
+    axis: int
+    """Spatial-axis index (0=y,1=x in 2D; 0=z,1=y,2=x in 3D)."""
+    pixel: int
+    """Image-pixel position of the seam along ``axis``."""
+    grad_idx: int
+    """Across-seam finite-difference index (``pixel - 1``)."""
 
 
 @dataclass(frozen=True)
 class Tile:
     """One kept region and the seams it owns."""
 
-    coord: tuple[int, ...]                    # multi-index in the kept-region grid
-    ranges: tuple[tuple[int, int], ...]       # per-axis (lo, hi) pixel ranges
-    seams: tuple[Seam, ...]                   # owned seams
+    coord: tuple[int, ...]
+    """Multi-index in the kept-region grid."""
+    ranges: tuple[tuple[int, int], ...]
+    """Per-axis (lo, hi) pixel ranges."""
+    seams: tuple[Seam, ...]
+    """Owned seams."""
 
     @property
     def n_seams(self) -> int:
@@ -53,7 +59,7 @@ def enumerate_tiles(
     overlap: Sequence[int],
 ) -> list[Tile]:
     """Enumerate kept-region tiles for a single image's spatial shape.
-
+    
     ``image_shape`` is the spatial shape only — ``(H, W)`` for 2D or
     ``(D, H, W)`` for 3D; channel and batch axes belong upstream.
 
@@ -81,8 +87,10 @@ def enumerate_tiles(
     tiles: list[Tile] = []
     for coord in np.ndindex(*n_regions):
         ranges = tuple(
-            (int(boundaries_per_axis[a][coord[a]]),
-             int(boundaries_per_axis[a][coord[a] + 1]))
+            (
+                int(boundaries_per_axis[a][coord[a]]),
+                int(boundaries_per_axis[a][coord[a] + 1])
+            )
             for a in range(len(coord))
         )
         owned: list[Seam] = []
