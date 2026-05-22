@@ -1,5 +1,5 @@
 """Configuration management."""
 
-from .settings import AnalysisConfig, GradientConfig, PlotConfig
+from .settings import AnalysisConfig, PerTileConfig, load_config_from_args
 
-__all__ = ["AnalysisConfig", "GradientConfig", "PlotConfig"]
+__all__ = ["AnalysisConfig", "PerTileConfig", "load_config_from_args"]

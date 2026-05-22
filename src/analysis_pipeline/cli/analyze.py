@@ -1,200 +1,188 @@
 #!/usr/bin/env python3
-"""
-Multi-method experiment analysis CLI.
+"""Multi-method per-tile-metric CLI.
 
-Generalized experiment analysis pipeline supporting 2-5 input predictions.
+Loads 2-5 predictions, runs the per-tile two-sample test on each, and prints
+a per-method summary. The structured ``MultiMethodReport`` is pickled to
+``save_dir/per_tile_report.pkl`` so downstream notebooks can load it
+directly.
 """
+
+from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import sys
 
 import numpy as np
 
 from ..config.settings import load_config_from_args
-from ..utils import load_prediction, ensure_4d, remove_padding
 from ..core.analysis import run_gradient_analysis_multi
+from ..utils import ensure_4d, load_prediction
+
+
+def parse_comma_separated_ints(value: str) -> list[int]:
+    """Parse a CSV of ints. Supports ``32`` → ``[32]`` and ``4,32,32`` → ``[4, 32, 32]``."""
+    try:
+        return [int(v) for v in value.split(",")]
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(
+            f"invalid comma-separated integers: {value!r} ({e})"
+        ) from e
 
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="Multi-method experiment analysis (compare 2-5 predictions)"
+        description=(
+            "Per-tile two-sample test for stitching artifacts. Compares 2-5 "
+            "predictions of the same image set."
+        )
     )
 
-    # Required arguments
     parser.add_argument(
         "--model_name",
         required=True,
         choices=["usplit", "microsplit", "HDN"],
-        help="Model name",
+        help="Model name (used in the report header).",
     )
-    parser.add_argument("--dataset", required=True, help="Dataset name")
+    parser.add_argument("--dataset", required=True, help="Dataset name.")
     parser.add_argument(
         "--predictions",
         required=True,
         type=str,
-        help="Comma-separated list of prediction files (.tiff/.pkl)",
+        help="Comma-separated prediction files (.tiff/.pkl).",
     )
     parser.add_argument(
         "--method_names",
         required=True,
         type=str,
-        help="Comma-separated method names, e.g., 'OG,SW,Method3'",
+        help="Comma-separated method names, e.g. 'OG,SW,Method3'.",
+    )
+    parser.add_argument(
+        "--save_dir",
+        required=True,
+        help="Directory to drop the pickled MultiMethodReport.",
     )
 
-    # Optional arguments
+    # TiledPatching geometry (per spatial axis, in image-pixel units).
     parser.add_argument(
-        "--save_dir", required=True, help="Directory to save results"
+        "--tile_size",
+        required=True,
+        type=parse_comma_separated_ints,
+        help="TiledPatching tile size per spatial axis, e.g. '64,64' (2D) or '16,64,64' (3D).",
     )
     parser.add_argument(
-        "--inner_tile_size",
-        type=parse_comma_separated,
-        default=[32],
-        help="Inner tile size(s)",
-    )
-    parser.add_argument(
-        "--bins", type=int, default=100, help="Number of histogram bins"
-    )
-    parser.add_argument(
-        "--channel", type=int, default=0, help="Channel to analyze (0-indexed)"
-    )
-    parser.add_argument(
-        "--padding",
-        type=parse_comma_separated,
-        default=[48],
-        help="Padding to remove from predictions",
+        "--overlap",
+        required=True,
+        type=parse_comma_separated_ints,
+        help="TiledPatching overlap per spatial axis, e.g. '32,32'.",
     )
 
-    # Analysis flags
+    # Statistical test.
     parser.add_argument(
-        "--gradient_analysis",
-        action="store_true",
-        default=True,
-        help="Run gradient analysis",
+        "--statistic",
+        choices=["kl", "js", "ks", "wasserstein", "mean_abs_ratio"],
+        default="kl",
+        help="Two-sample discrepancy statistic.",
+    )
+    parser.add_argument("--strip_width", type=int, default=4, help="Control strip half-width N.")
+    parser.add_argument("--block_size", type=int, default=3, help="Block size B for permutation.")
+    parser.add_argument(
+        "--n_permutations", type=int, default=1000, help="Number of permutations R."
+    )
+    parser.add_argument("--alpha", type=float, default=0.05, help="Rejection threshold.")
+    parser.add_argument(
+        "--num_bins_per_tile",
+        type=int,
+        default=32,
+        help="Bins for histogram-based statistics (KL, JS).",
+    )
+    parser.add_argument("--random_seed", type=int, default=0, help="RNG seed.")
+    parser.add_argument(
+        "--diagnostic_n_tiles",
+        type=int,
+        default=16,
+        help="Random tiles to use for the anisotropy diagnostic (0 to skip).",
     )
     parser.add_argument(
-        "--qualitative_analysis",
-        action="store_true",
+        "--no_pool_z_with_xy",
+        dest="pool_z_with_xy",
+        action="store_false",
         default=True,
-        help="Run qualitative analysis",
+        help=(
+            "Reserved for v2: when set, run separate xy and z tests in 3D. "
+            "Currently emits a warning and behaves as if pooling were on."
+        ),
     )
     parser.add_argument(
-        "--skip_gradient_analysis",
-        action="store_true",
-        help="Skip gradient analysis",
+        "--channel", type=int, default=0, help="Channel index to analyze (0-based)."
     )
 
     return parser.parse_args()
 
 
-def parse_comma_separated(value: str) -> list:
-    """
-    Parse comma-separated integers.
-
-    Supports formats:
-    - Single value: "32" → [32]
-    - 2D tile: "32,32" → [32, 32]
-    - 3D tile: "4,32,32" → [4, 32, 32]
-    - Per-method: "32;64;32" → [[32], [64], [32]]
-    - Per-method 3D: "4,32,32;5,32,32" → [[4,32,32], [5,32,32]]
-    """
-    # Check if there are semicolons (per-method specification)
-    if ";" in value:
-        methods = value.split(";")
-        return [
-            [int(v) for v in method.split(",")]
-            for method in methods
-        ]
-
-    # Single tile specification for all methods
-    try:
-        result = [int(v) for v in value.split(",")]
-        # If single value, keep as [32], otherwise keep as is [4,32,32]
-        return result
-    except ValueError:
-        raise argparse.ArgumentTypeError(
-            f"Invalid comma-separated values: {value}. "
-            "Use format: '32' or '32,32' or '4,32,32' or '32;64;32'"
-        )
-
-
-def main():
-    """Main entry point for analysis CLI."""
+def main() -> int:
     args = parse_args()
 
-    # Load configuration
     try:
         config = load_config_from_args(args)
     except ValueError as e:
-        print(f"❌ Configuration error: {e}")
-        sys.exit(1)
+        print(f"Configuration error: {e}", file=sys.stderr)
+        return 1
 
-    print(f"\n{'=' * 60}")
-    print(f"MULTI-METHOD ANALYSIS PIPELINE")
-    print(f"{'=' * 60}")
-    print(f"Methods: {', '.join(config.method_names)}")
+    print("=" * 60)
+    print("PER-TILE METRIC PIPELINE")
+    print("=" * 60)
+    print(f"Methods:     {', '.join(config.method_names)}")
+    print(f"Dataset:     {config.dataset}")
     print(f"Predictions: {config.predictions}")
-    print(f"Dataset: {config.dataset}")
-    print(f"{'=' * 60}\n")
+    print(f"Save dir:    {config.save_dir}")
+    print(f"Tile size:   {config.per_tile.tile_size}")
+    print(f"Overlap:     {config.per_tile.overlap}")
+    print(f"Statistic:   {config.per_tile.statistic}")
+    print(f"R:           {config.per_tile.n_permutations}")
+    print("=" * 60)
 
-    # Create output directory
     config.save_dir.mkdir(parents=True, exist_ok=True)
 
-    # Load all predictions
-    print("Loading predictions...")
-    predictions_list = []
-    for pred_file, method_name, pad in zip(
-        config.predictions, config.method_names, config.padding
+    print("\nLoading predictions...")
+    predictions_list: list[np.ndarray] = []
+    for pred_file, method_name in zip(
+        config.predictions, config.method_names, strict=True
     ):
-        print(f"  Loading {method_name}: {pred_file}")
+        print(f"  {method_name}: {pred_file}")
         try:
             pred = load_prediction(pred_file)
-
-            # Handle 6D arrays (squeeze first dimension)
-            if len(pred.shape) == 6:
+            if pred.ndim == 6:
                 pred = np.squeeze(pred, axis=0)
-
             pred = ensure_4d(pred)
-            print(f"    Padding to remove: {pad}")
-            pred = remove_padding(pred, pad)
-
+            print(f"    shape: {pred.shape}")
             predictions_list.append(pred)
-            print(f"    Final shape: {pred.shape}")
         except Exception as e:
-            print(f"❌ Error loading {pred_file}: {e}")
-            sys.exit(1)
+            print(f"Error loading {pred_file}: {e}", file=sys.stderr)
+            return 1
 
-    # Run gradient analysis
-    if config.run_gradient_analysis:
-        print("\n" + "-" * 60)
+    print("\nRunning per-tile analysis...")
+    run_gradient_analysis_multi(
+        predictions_list=predictions_list,
+        method_names=config.method_names,
+        save_dir=config.save_dir,
+        tile_size=config.per_tile.tile_size,
+        overlap=config.per_tile.overlap,
+        statistic=config.per_tile.statistic,
+        strip_width=config.per_tile.strip_width,
+        block_size=config.per_tile.block_size,
+        n_permutations=config.per_tile.n_permutations,
+        alpha=config.per_tile.alpha,
+        num_bins_per_tile=config.per_tile.num_bins_per_tile,
+        random_seed=config.per_tile.random_seed,
+        diagnostic_n_tiles=config.per_tile.diagnostic_n_tiles,
+        pool_z_with_xy=config.per_tile.pool_z_with_xy,
+        channel=config.per_tile.channel,
+    )
 
-        if config.gradient.channel == 2:
-            # Analyze each channel separately
-            for channel in range(config.gradient.channel):
-                print(f"\nAnalyzing Channel {channel}...")
-                run_gradient_analysis_multi(
-                    predictions_list=predictions_list,
-                    method_names=config.method_names,
-                    save_dir=config.save_dir / f"Channel_{channel}",
-                    inner_tile_size=config.gradient.inner_tile_size,
-                    bins=config.gradient.bins,
-                    channel=channel,
-                    border=0,
-                )
-        else:
-            run_gradient_analysis_multi(
-                predictions_list=predictions_list,
-                method_names=config.method_names,
-                save_dir=config.save_dir,
-                inner_tile_size=config.gradient.inner_tile_size,
-                bins=config.gradient.bins,
-                channel=config.gradient.channel,
-                border=0,
-            )
-
-    print(f"\n✅ Analysis complete! Results saved to: {config.save_dir}")
+    print(f"\nDone. Results saved to: {config.save_dir}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
