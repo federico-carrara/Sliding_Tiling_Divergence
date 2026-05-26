@@ -7,7 +7,7 @@ axis one element shorter than the input.
 The old class-based ``GradientUtils*`` hierarchy (seam-aligned sampling,
 shared bin edges, Wiener helpers) belonged to the previous global-KL
 pipeline and is gone. Per-tile sampling now lives in
-:mod:`analysis_pipeline.core.sampling`.
+:mod:`analysis_pipeline.gradient_test.sampling`.
 """
 
 from __future__ import annotations

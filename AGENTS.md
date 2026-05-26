@@ -35,7 +35,7 @@ Reference-free: only the stitched prediction and the TiledPatching `(tile_size, 
 Entry points:
 
 - CLI: `analyze-experiment` → [src/analysis_pipeline/cli/analyze.py](src/analysis_pipeline/cli/analyze.py)
-- Python API: `run_gradient_analysis_multi` in [src/analysis_pipeline/core/analysis.py](src/analysis_pipeline/core/analysis.py)
+- Python API: `run_gradient_analysis_multi` in [src/analysis_pipeline/gradient_test/analysis.py](src/analysis_pipeline/gradient_test/analysis.py)
 
 ## Layout
 
@@ -43,7 +43,7 @@ Entry points:
 src/analysis_pipeline/
 ├── cli/analyze.py            # argparse CLI; per-tile flags only
 ├── config/settings.py        # PerTileConfig + AnalysisConfig (pydantic)
-├── core/
+├── gradient_test/            # per-tile permutation hypothesis test (this metric)
 │   ├── seams.py              # closed-form seam positions from TiledPatching
 │   ├── tiles.py              # kept-region enumeration + owned-seam list
 │   ├── sampling.py           # per-tile seam_sample / control_sample
@@ -52,9 +52,10 @@ src/analysis_pipeline/
 │   ├── aggregation.py        # TileResult / ImageReport / MethodReport dataclasses
 │   ├── per_tile.py           # per-image orchestrator (one slice in, one report out)
 │   ├── analysis.py           # multi-method orchestrator (legacy entry name)
-│   ├── gradient_analysis.py  # compute_gradients_{2d,3d} helpers only
-│   ├── metrics.py            # legacy KL/Wiener helpers — orphaned, used by plotting.py
-│   └── plotting.py           # legacy histogram/KL-heatmap figures — orphaned but kept for v2 reuse
+│   └── gradient_analysis.py  # compute_gradients_{2d,3d} helpers only
+├── legacy/                   # quarantined — pre-rewrite helpers, kept for v2 reuse
+│   ├── metrics.py            # legacy KL/Wiener helpers
+│   └── plotting.py           # legacy histogram/KL-heatmap figures
 └── utils/
     ├── array_utils.py        # ensure_4d (channel-first)
     └── file_utils.py         # load_prediction (.pkl / .tiff)
@@ -68,7 +69,7 @@ tests/
 
 ### 1. Geometry (no detection)
 
-The TiledPatching geometry is supplied by the user (`--tile_size 64,64 --overlap 32,32` etc.); seams are derived analytically in [src/analysis_pipeline/core/seams.py](src/analysis_pipeline/core/seams.py) — closed form lifted from `careamics/dataset/patching/tiled_patching.py::_compute_1d_coords`:
+The TiledPatching geometry is supplied by the user (`--tile_size 64,64 --overlap 32,32` etc.); seams are derived analytically in [src/analysis_pipeline/gradient_test/seams.py](src/analysis_pipeline/gradient_test/seams.py) — closed form lifted from `careamics/dataset/patching/tiled_patching.py::_compute_1d_coords`:
 
 - `step = tile_size - overlap`, `M = overlap // 2`
 - `N = ceil((axis_size - overlap) / step)` tiles per axis
@@ -107,7 +108,7 @@ The orchestrator returns a `MultiMethodReport` dataclass and, if `save_dir` is s
 ## Conventions
 
 - Arrays are **channel-first**: 2-D `(N, C, H, W)`, 3-D `(N, C, D, H, W)`. `ensure_4d` inserts the channel axis at position 1 for 3-D inputs. Dimensionality is inferred from `predictions.ndim` (4 → 2-D, 5 → 3-D).
-- `tile_size` / `overlap` may be a flat per-axis list (`[64, 64]`) applied to every method, or a per-method nested list (`[[64, 64], [32, 32]]`) — broadcast in `_broadcast_per_method_spec` ([core/analysis.py](src/analysis_pipeline/core/analysis.py)).
+- `tile_size` / `overlap` may be a flat per-axis list (`[64, 64]`) applied to every method, or a per-method nested list (`[[64, 64], [32, 32]]`) — broadcast in `_broadcast_per_method_spec` ([gradient_test/analysis.py](src/analysis_pipeline/gradient_test/analysis.py)).
 - 3-D z-direction is pooled with x/y by default. `pool_z_with_xy=False` is reserved for v2 and currently emits a warning while still pooling.
 - Single channel only per run; the legacy `--channel 2` magic-iterate-over-channels behaviour is removed. Call once per channel if you need multiple.
 
@@ -116,7 +117,7 @@ The orchestrator returns a `MultiMethodReport` dataclass and, if `save_dir` is s
 - **Calibration under residual dependence** is the canary. If `tests/test_null_calibration.py` ever fails (`frac_rejected` significantly above α on a flat field), raise `block_size` from 3 to 5–7 before chasing anything else.
 - **Strip width vs. step**: `tile_size - overlap` must be ≥ `2*strip_width + 2`. Lower the strip width if you want overlap-heavy tilings.
 - **Dilution at low bias**: each interior tile pools across 4 (2-D) or 6 (3-D) owned seams; an artifact present on only one of them produces a signal diluted by ~3-5×. `tests/test_artifact_injection.py` works with a +2.0 bias for this reason.
-- **`plotting.py` and `metrics.py` are orphaned**, not deleted. They retain helpers (`plot_multiple_hist`, `compute_kl_matrix`, `wiener_entropy`, …) that may be reused when per-tile heatmaps and boxplots land in v2. No v1 code imports them; keep them quarantined.
+- **`legacy/plotting.py` and `legacy/metrics.py` are orphaned**, not deleted. They retain helpers (`plot_multiple_hist`, `compute_kl_matrix`, `wiener_entropy`, …) that may be reused when per-tile heatmaps and boxplots land in v2. No v1 code imports them; keep them quarantined.
 - **Pydantic 2 is required** (not v1 syntax). `config/settings.py` uses `model_validator(mode="after")`.
 
 ## Running it

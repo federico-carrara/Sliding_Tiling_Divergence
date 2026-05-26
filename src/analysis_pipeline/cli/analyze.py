@@ -15,7 +15,7 @@ import sys
 import numpy as np
 
 from ..config.settings import load_config_from_args
-from ..core.analysis import run_gradient_analysis_multi
+from ..gradient_test.analysis import run_gradient_analysis_multi
 from ..utils import ensure_4d, load_prediction
 
 

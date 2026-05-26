@@ -90,7 +90,7 @@ See [EXAMPLES.md](EXAMPLES.md) for detailed usage scenarios.
 
 ```python
 from pathlib import Path
-from analysis_pipeline.core.analysis import run_gradient_analysis_multi
+from analysis_pipeline.gradient_test.analysis import run_gradient_analysis_multi
 from analysis_pipeline.utils import load_prediction, ensure_4d, remove_padding
 
 # Load predictions

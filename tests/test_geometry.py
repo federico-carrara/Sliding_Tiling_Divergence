@@ -9,8 +9,8 @@ from __future__ import annotations
 import sys
 from collections import Counter
 
-from analysis_pipeline.core.seams import compute_seam_positions
-from analysis_pipeline.core.tiles import enumerate_tiles
+from analysis_pipeline.gradient_test.seams import compute_seam_positions
+from analysis_pipeline.gradient_test.tiles import enumerate_tiles
 
 
 def _expect(cond: bool, msg: str) -> None:

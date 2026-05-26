@@ -18,7 +18,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ..core.calibration import calibrate_block_size
+from ..gradient_test.calibration import calibrate_block_size
 from ..utils import ensure_4d, load_prediction
 
 

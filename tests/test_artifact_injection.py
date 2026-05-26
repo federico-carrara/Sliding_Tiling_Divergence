@@ -16,8 +16,8 @@ import sys
 
 import numpy as np
 
-from analysis_pipeline.core.per_tile import per_image_tile_scan
-from analysis_pipeline.core.seams import compute_seam_positions
+from analysis_pipeline.gradient_test.per_tile import per_image_tile_scan
+from analysis_pipeline.gradient_test.seams import compute_seam_positions
 
 
 def main() -> None:

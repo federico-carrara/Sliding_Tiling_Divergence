@@ -208,7 +208,7 @@ def plot_kl_heatmaps_for_range(
     matplotlib.figure.Figure
         Figure with one heatmap subplot per position.
     """
-    from .gradient_analysis import GradientUtils
+    from ..gradient_test.gradient_analysis import GradientUtils
 
     n_utils = len(grad_utils_list)
     if labels is None:
