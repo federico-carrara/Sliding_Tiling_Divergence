@@ -15,13 +15,16 @@ Created via `conda create -n sliding_tiling_env python=3.12 -y` then `pip instal
 Quick commands:
 
 ```bash
-# Run all verification scripts (geometry, null calibration, artifact injection)
+# Run all verification scripts (per-tile + FRC)
 /localscratch/miniforge3/envs/sliding_tiling_env/bin/python tests/test_geometry.py
 /localscratch/miniforge3/envs/sliding_tiling_env/bin/python tests/test_null_calibration.py
 /localscratch/miniforge3/envs/sliding_tiling_env/bin/python tests/test_artifact_injection.py
+/localscratch/miniforge3/envs/sliding_tiling_env/bin/python tests/test_calibration.py
+/localscratch/miniforge3/envs/sliding_tiling_env/bin/python tests/test_frc.py
 
 # CLI smoke
 /localscratch/miniforge3/envs/sliding_tiling_env/bin/python -m analysis_pipeline.cli.analyze --help
+/localscratch/miniforge3/envs/sliding_tiling_env/bin/python -m analysis_pipeline.cli.frc_analyze --help
 ```
 
 If a dep is missing, `pip install <pkg>` inside the env — don't switch to another env.
@@ -34,16 +37,21 @@ Reference-free: only the stitched prediction and the TiledPatching `(tile_size, 
 
 Entry points:
 
-- CLI: `analyze-experiment` → [src/analysis_pipeline/cli/analyze.py](src/analysis_pipeline/cli/analyze.py)
-- Python API: `run_gradient_analysis_multi` in [src/analysis_pipeline/gradient_test/analysis.py](src/analysis_pipeline/gradient_test/analysis.py)
+Two metrics ship today:
+
+- **Gradient test** (reference-free, per-tile permutation hypothesis test): CLI `analyze-experiment` → [src/analysis_pipeline/cli/analyze.py](src/analysis_pipeline/cli/analyze.py); Python API `run_gradient_analysis_multi` in [src/analysis_pipeline/gradient_test/analysis.py](src/analysis_pipeline/gradient_test/analysis.py).
+- **FRC** (reference-based, 2-D Fourier Ring Correlation vs. ground truth): CLI `frc-experiment` → [src/analysis_pipeline/cli/frc_analyze.py](src/analysis_pipeline/cli/frc_analyze.py); Python API `run_frc_analysis_multi` in [src/analysis_pipeline/frc/analysis.py](src/analysis_pipeline/frc/analysis.py). Spec: [agents_artifacts/FRC_metric.md](agents_artifacts/FRC_metric.md).
 
 ## Layout
 
 ```
 src/analysis_pipeline/
 ├── cli/analyze.py            # argparse CLI; per-tile flags only
-├── config/settings.py        # PerTileConfig + AnalysisConfig (pydantic)
-├── gradient_test/            # per-tile permutation hypothesis test (this metric)
+├── config/
+│   ├── gradient.py           # GradientTestConfig (per-tile permutation params)
+│   ├── frc.py                # FRCConfig
+│   └── analysis.py           # AnalysisConfig + FRCAnalysisConfig + CLI loaders
+├── gradient_test/            # per-tile permutation hypothesis test (reference-free)
 │   ├── seams.py              # closed-form seam positions from TiledPatching
 │   ├── tiles.py              # kept-region enumeration + owned-seam list
 │   ├── sampling.py           # per-tile seam_sample / control_sample
@@ -53,6 +61,14 @@ src/analysis_pipeline/
 │   ├── per_tile.py           # per-image orchestrator (one slice in, one report out)
 │   ├── analysis.py           # multi-method orchestrator (legacy entry name)
 │   └── gradient_analysis.py  # compute_gradients_{2d,3d} helpers only
+├── frc/                      # Fourier Ring Correlation vs. GT (reference-based)
+│   ├── windowing.py          # 2-D Hamming window — mandatory pre-FFT taper
+│   ├── frc.py                # per-image FRC curve (FFT + radial bincount)
+│   ├── aggregation.py        # FRCImageResult / FRCMethodReport / FRCMultiMethodReport
+│   ├── analysis.py           # multi-method orchestrator
+│   ├── plotting.py           # mean curve + 95% CI bands + harmonic verticals
+│   ├── reduction.py          # frc_to_scalar — stub, raises NotImplementedError (§3.7)
+│   └── fsc.py                # 3-D FSC — stub only (§5)
 ├── legacy/                   # quarantined — pre-rewrite helpers, kept for v2 reuse
 │   ├── metrics.py            # legacy KL/Wiener helpers
 │   └── plotting.py           # legacy histogram/KL-heatmap figures
@@ -62,7 +78,9 @@ src/analysis_pipeline/
 tests/
 ├── test_geometry.py          # tile enumeration + owned-seam classification
 ├── test_null_calibration.py  # flat-field null check (frac_rejected ≈ α)
-└── test_artifact_injection.py # synthetic seam shift → tiles near seam reject
+├── test_artifact_injection.py # synthetic seam shift → tiles near seam reject
+├── test_calibration.py       # block-size calibration smoke
+└── test_frc.py               # self-FRC = 1, indep-noise ≈ 0, harmonic dip, aggregation
 ```
 
 ## How the pipeline works
@@ -105,6 +123,22 @@ Per image: `median(T_tile)` and `frac_rejected = mean(p_tile < α)`. Per method:
 
 The orchestrator returns a `MultiMethodReport` dataclass and, if `save_dir` is set, pickles it to `save_dir/per_tile_report.pkl`. No CSVs / npy / summary text files are emitted — that's v2 work.
 
+## How FRC works
+
+2-D only. Per (prediction, GT) pair: Hamming window → `fft2` → `fftshift` → bin Fourier-space pixels by integer radius from DC → for each ring `r`, compute
+
+```
+FRC(r) = Σ F_P(k) · conj(F_G(k))  /  sqrt( Σ |F_P(k)|² · Σ |F_G(k)|² )
+```
+
+The ring sums are vectorised with three `np.bincount` calls over a precomputed radial-index map; the cross-sum imaginary part cancels by Hermitian symmetry for real inputs and is dropped. Frequency-bin centres are `r / min(H, W)` in cycles/pixel; `r_max = min(H, W) // 2`.
+
+Per method, images are aggregated per-frequency-bin with `np.nanmean` and a 95% CI of `± 1.96 · std / sqrt(n)`. The Fisher-z transform is left as a deferred optional refinement (see `agents_artifacts/FRC_metric.md` §3.5).
+
+Stitching artifacts show up as dips at `k/S` for `k = 1, 2, …`, where `S` is the inner tile size. The headline plot in [src/analysis_pipeline/frc/plotting.py](src/analysis_pipeline/frc/plotting.py) draws dashed verticals at those locations when `--tile_inner_sizes` is provided.
+
+`frc_to_scalar` and the 3-D `fsc` module are intentional stubs (see [src/analysis_pipeline/frc/reduction.py](src/analysis_pipeline/frc/reduction.py) and [src/analysis_pipeline/frc/fsc.py](src/analysis_pipeline/frc/fsc.py)). The orchestrator pickles to `save_dir/frc_report.pkl` and writes the headline plot to `save_dir/frc_curves.png`.
+
 ## Conventions
 
 - Arrays are **channel-first**: 2-D `(N, C, H, W)`, 3-D `(N, C, D, H, W)`. `ensure_4d` inserts the channel axis at position 1 for 3-D inputs. Dimensionality is inferred from `predictions.ndim` (4 → 2-D, 5 → 3-D).
@@ -118,7 +152,7 @@ The orchestrator returns a `MultiMethodReport` dataclass and, if `save_dir` is s
 - **Strip width vs. step**: `tile_size - overlap` must be ≥ `2*strip_width + 2`. Lower the strip width if you want overlap-heavy tilings.
 - **Dilution at low bias**: each interior tile pools across 4 (2-D) or 6 (3-D) owned seams; an artifact present on only one of them produces a signal diluted by ~3-5×. `tests/test_artifact_injection.py` works with a +2.0 bias for this reason.
 - **`legacy/plotting.py` and `legacy/metrics.py` are orphaned**, not deleted. They retain helpers (`plot_multiple_hist`, `compute_kl_matrix`, `wiener_entropy`, …) that may be reused when per-tile heatmaps and boxplots land in v2. No v1 code imports them; keep them quarantined.
-- **Pydantic 2 is required** (not v1 syntax). `config/settings.py` uses `model_validator(mode="after")`.
+- **Pydantic 2 is required** (not v1 syntax). The `config/` modules use `model_validator(mode="after")`.
 
 ## Running it
 

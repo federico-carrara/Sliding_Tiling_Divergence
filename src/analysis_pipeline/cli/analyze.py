@@ -14,7 +14,7 @@ import sys
 
 import numpy as np
 
-from ..config.settings import load_config_from_args
+from ..config.analysis import load_gradient_test_config_from_args
 from ..gradient_test.analysis import run_gradient_analysis_multi
 from ..utils import ensure_4d, load_prediction
 
@@ -149,7 +149,7 @@ def main() -> int:
     args = parse_args()
 
     try:
-        config = load_config_from_args(args)
+        config = load_gradient_test_config_from_args(args)
     except ValueError as e:
         print(f"Configuration error: {e}", file=sys.stderr)
         return 1
@@ -161,10 +161,10 @@ def main() -> int:
     print(f"Dataset:     {config.dataset}")
     print(f"Predictions: {config.predictions}")
     print(f"Save dir:    {config.save_dir}")
-    print(f"Tile size:   {config.per_tile.tile_size}")
-    print(f"Overlap:     {config.per_tile.overlap}")
-    print(f"Statistic:   {config.per_tile.statistic}")
-    print(f"R:           {config.per_tile.n_permutations}")
+    print(f"Tile size:   {config.gradient_test.tile_size}")
+    print(f"Overlap:     {config.gradient_test.overlap}")
+    print(f"Statistic:   {config.gradient_test.statistic}")
+    print(f"R:           {config.gradient_test.n_permutations}")
     print("=" * 60)
 
     config.save_dir.mkdir(parents=True, exist_ok=True)
@@ -191,17 +191,17 @@ def main() -> int:
         predictions_list=predictions_list,
         method_names=config.method_names,
         save_dir=config.save_dir,
-        tile_size=config.per_tile.tile_size,
-        overlap=config.per_tile.overlap,
-        statistic=config.per_tile.statistic,
-        strip_width=config.per_tile.strip_width,
-        block_size=config.per_tile.block_size,
-        n_permutations=config.per_tile.n_permutations,
-        alpha=config.per_tile.alpha,
-        num_bins_per_tile=config.per_tile.num_bins_per_tile,
-        random_seed=config.per_tile.random_seed,
-        pool_z_with_xy=config.per_tile.pool_z_with_xy,
-        channel=config.per_tile.channel,
+        tile_size=config.gradient_test.tile_size,
+        overlap=config.gradient_test.overlap,
+        statistic=config.gradient_test.statistic,
+        strip_width=config.gradient_test.strip_width,
+        block_size=config.gradient_test.block_size,
+        n_permutations=config.gradient_test.n_permutations,
+        alpha=config.gradient_test.alpha,
+        num_bins_per_tile=config.gradient_test.num_bins_per_tile,
+        random_seed=config.gradient_test.random_seed,
+        pool_z_with_xy=config.gradient_test.pool_z_with_xy,
+        channel=config.gradient_test.channel,
     )
 
     print(f"\nDone. Results saved to: {config.save_dir}")

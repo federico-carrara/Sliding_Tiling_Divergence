@@ -1,14 +1,12 @@
-"""Configuration models for the per-tile analysis pipeline."""
+"""Configuration model for the gradient-test (per-tile permutation) metric."""
 
 from __future__ import annotations
 
 import warnings
-from pathlib import Path
 from typing import Literal, Self
 
 from pydantic import (
     BaseModel,
-    ConfigDict,
     Field,
     NonNegativeInt,
     PositiveInt,
@@ -16,12 +14,13 @@ from pydantic import (
     model_validator,
 )
 
-# Names that ``statistics.STATISTICS`` exposes. Kept as a Literal for
-# pydantic to validate without importing core/ from config/.
+# Names that ``gradient_test.statistics.STATISTICS`` exposes. Kept as a
+# Literal so pydantic can validate without importing the gradient-test
+# package from ``config/``.
 Statistic = Literal["kl", "js", "ks", "wasserstein", "mean_abs_ratio"]
 
 
-class PerTileConfig(BaseModel):
+class GradientTestConfig(BaseModel):
     """Parameters of the per-tile two-sample test.
 
     Attributes
@@ -92,7 +91,7 @@ class PerTileConfig(BaseModel):
         Returns
         -------
         Self
-            The validated ``PerTileConfig`` instance.
+            The validated ``GradientTestConfig`` instance.
 
         Raises
         ------
@@ -120,102 +119,3 @@ class PerTileConfig(BaseModel):
                     f"reduce overlap[{i}]."
                 )
         return self
-
-
-class AnalysisConfig(BaseModel):
-    """Top-level configuration consumed by the CLI.
-
-    Attributes
-    ----------
-    name : str
-        Model name (used in the report header).
-    dataset : str
-        Dataset name.
-    save_dir : pathlib.Path
-        Directory where the pickled ``MultiMethodReport`` is written.
-    predictions : list of str
-        Prediction file paths (one per method).
-    method_names : list of str
-        Method names matching ``predictions`` one-to-one.
-    per_tile : PerTileConfig
-        Per-tile two-sample test parameters.
-    """
-
-    model_config = ConfigDict(protected_namespaces=())
-
-    name: str
-    dataset: str
-    save_dir: Path
-    predictions: list[str]
-    method_names: list[str]
-    per_tile: PerTileConfig
-
-    @model_validator(mode="after")
-    def _check_predictions_and_methods(self) -> Self:
-        """Validate matching counts and the supported number of predictions.
-
-        Returns
-        -------
-        Self
-            The validated ``AnalysisConfig`` instance.
-
-        Raises
-        ------
-        ValueError
-            If ``predictions`` and ``method_names`` have different lengths,
-            or the number of predictions is outside the supported ``[2, 5]`` range.
-        """
-        if len(self.predictions) != len(self.method_names):
-            raise ValueError(
-                f"Number of predictions ({len(self.predictions)}) must match "
-                f"method names ({len(self.method_names)})"
-            )
-        if len(self.predictions) < 2:
-            raise ValueError("At least 2 predictions required")
-        if len(self.predictions) > 5:
-            raise ValueError("Maximum 5 predictions supported")
-        return self
-
-
-def load_config_from_args(args) -> AnalysisConfig:
-    """Build an :class:`AnalysisConfig` from parsed CLI arguments.
-
-    Expects ``args.tile_size`` and ``args.overlap`` to be flat per-axis
-    integer lists (the multi-method per-prediction broadcasting is handled
-    later inside ``run_gradient_analysis_multi``).
-
-    Parameters
-    ----------
-    args : argparse.Namespace
-        Parsed CLI arguments produced by ``analyze``'s ``parse_args``.
-
-    Returns
-    -------
-    AnalysisConfig
-        Validated configuration ready to drive the pipeline.
-    """
-    pred_files = [p.strip() for p in args.predictions.split(",")]
-    method_names = [m.strip() for m in args.method_names.split(",")]
-
-    per_tile = PerTileConfig(
-        tile_size=list(args.tile_size),
-        overlap=list(args.overlap),
-        statistic=args.statistic,
-        strip_width=args.strip_width,
-        block_size=args.block_size,
-        n_permutations=args.n_permutations,
-        alpha=args.alpha,
-        num_bins_per_tile=args.num_bins_per_tile,
-        random_seed=args.random_seed,
-        pool_z_with_xy=args.pool_z_with_xy,
-        channel=args.channel,
-    )
-
-    return AnalysisConfig(
-        name=args.model_name,
-        dataset=args.dataset,
-        save_dir=Path(args.save_dir),
-        predictions=pred_files,
-        method_names=method_names,
-        per_tile=per_tile,
-    )
