@@ -7,8 +7,8 @@ from typing import Optional, Self
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from .frc import FRCConfig
-from .gradient import GradientTestConfig
+from analysis_pipeline.config.frc import FRCConfig
+from analysis_pipeline.config.gradient import GradientTestConfig
 
 
 class AnalysisConfig(BaseModel):

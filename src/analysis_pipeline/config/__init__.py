@@ -1,6 +1,6 @@
 """Configuration management."""
 
-from .analysis import (
+from analysis_pipeline.config.analysis import (
     AnalysisConfig,
     FRCAnalysisConfig,
     load_frc_config_from_args,
@@ -8,8 +8,8 @@ from .analysis import (
     load_gradient_test_config_from_args,
     load_gradient_test_single_config_from_args,
 )
-from .frc import FRCConfig
-from .gradient import GradientTestConfig
+from analysis_pipeline.config.frc import FRCConfig
+from analysis_pipeline.config.gradient import GradientTestConfig
 
 __all__ = [
     "AnalysisConfig",

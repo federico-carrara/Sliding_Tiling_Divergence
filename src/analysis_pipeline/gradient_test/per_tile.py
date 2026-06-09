@@ -11,12 +11,12 @@ from typing import Sequence
 
 import numpy as np
 
-from .aggregation import ImageReport, TileResult, aggregate_image
-from .gradient_analysis import compute_gradients
-from .permutation import permutation_pvalue
-from .sampling import sample_tile
-from .statistics import get_statistic
-from .tiles import enumerate_tiles
+from analysis_pipeline.gradient_test.aggregation import ImageReport, TileResult, aggregate_image
+from analysis_pipeline.gradient_test.gradient_analysis import compute_gradients
+from analysis_pipeline.gradient_test.permutation import permutation_pvalue
+from analysis_pipeline.gradient_test.sampling import sample_tile
+from analysis_pipeline.gradient_test.statistics import get_statistic
+from analysis_pipeline.gradient_test.tiles import enumerate_tiles
 
 
 def _validate_step_vs_strip(

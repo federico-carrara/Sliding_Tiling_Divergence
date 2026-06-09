@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import norm
 
-from .metrics import compute_kl_matrix, normalize_histogram
+from analysis_pipeline.legacy.metrics import compute_kl_matrix, normalize_histogram
 
 
 # TODO: deprecated dead-code, kept only for keeping ideas around
@@ -208,7 +208,7 @@ def plot_kl_heatmaps_for_range(
     matplotlib.figure.Figure
         Figure with one heatmap subplot per position.
     """
-    from ..gradient_test.gradient_analysis import GradientUtils
+    from analysis_pipeline.gradient_test.gradient_analysis import GradientUtils
 
     n_utils = len(grad_utils_list)
     if labels is None:

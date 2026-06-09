@@ -14,7 +14,7 @@ from typing import Optional
 import matplotlib.pyplot as plt
 import numpy as np
 
-from .aggregation import FRCMultiMethodReport
+from analysis_pipeline.frc.aggregation import FRCMultiMethodReport
 
 
 def plot_frc_curves(

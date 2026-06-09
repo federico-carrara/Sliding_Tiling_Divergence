@@ -15,8 +15,8 @@ from typing import Optional
 
 import numpy as np
 
-from .aggregation import MultiMethodReport
-from .analysis import run_gradient_analysis
+from analysis_pipeline.gradient_test.aggregation import MultiMethodReport
+from analysis_pipeline.gradient_test.analysis import run_gradient_analysis
 
 
 def _broadcast_per_method_spec(

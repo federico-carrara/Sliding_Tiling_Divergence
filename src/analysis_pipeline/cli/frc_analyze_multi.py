@@ -14,10 +14,10 @@ import sys
 
 import numpy as np
 
-from ..config.analysis import load_frc_config_from_args
-from ..frc.comparison import run_frc_analysis_multi
-from ..frc.plotting import plot_frc_curves
-from ..utils import ensure_4d, load_prediction
+from analysis_pipeline.config.analysis import load_frc_config_from_args
+from analysis_pipeline.frc.comparison import run_frc_analysis_multi
+from analysis_pipeline.frc.plotting import plot_frc_curves
+from analysis_pipeline.utils import ensure_4d, load_prediction
 
 
 def parse_args() -> argparse.Namespace:

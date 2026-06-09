@@ -18,7 +18,7 @@ from typing import Optional, Sequence
 
 import numpy as np
 
-from .per_tile import per_image_tile_scan
+from analysis_pipeline.gradient_test.per_tile import per_image_tile_scan
 
 
 @dataclass

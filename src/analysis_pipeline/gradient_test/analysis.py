@@ -14,8 +14,8 @@ from typing import Optional
 
 import numpy as np
 
-from .aggregation import MethodReport, aggregate_method
-from .per_tile import per_image_tile_scan
+from analysis_pipeline.gradient_test.aggregation import MethodReport, aggregate_method
+from analysis_pipeline.gradient_test.per_tile import per_image_tile_scan
 
 
 def run_gradient_analysis(

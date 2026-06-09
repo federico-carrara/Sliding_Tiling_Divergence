@@ -13,9 +13,9 @@ import sys
 
 import numpy as np
 
-from ..config.analysis import load_frc_single_config_from_args
-from ..frc.analysis import run_frc_analysis
-from ..utils import ensure_4d, load_prediction
+from analysis_pipeline.config.analysis import load_frc_single_config_from_args
+from analysis_pipeline.frc.analysis import run_frc_analysis
+from analysis_pipeline.utils import ensure_4d, load_prediction
 
 
 def parse_args() -> argparse.Namespace:

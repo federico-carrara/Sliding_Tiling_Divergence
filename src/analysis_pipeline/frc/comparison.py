@@ -14,8 +14,8 @@ from typing import Optional
 
 import numpy as np
 
-from .aggregation import FRCMultiMethodReport
-from .analysis import run_frc_analysis
+from analysis_pipeline.frc.aggregation import FRCMultiMethodReport
+from analysis_pipeline.frc.analysis import run_frc_analysis
 
 
 def run_frc_analysis_multi(

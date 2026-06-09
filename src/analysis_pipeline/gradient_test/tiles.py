@@ -18,7 +18,7 @@ from typing import Sequence
 
 import numpy as np
 
-from .seams import compute_seam_positions
+from analysis_pipeline.gradient_test.seams import compute_seam_positions
 
 
 @dataclass(frozen=True)

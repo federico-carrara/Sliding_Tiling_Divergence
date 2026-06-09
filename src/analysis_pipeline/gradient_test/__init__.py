@@ -1,20 +1,20 @@
 """Core analysis modules."""
 
-from .aggregation import (
+from analysis_pipeline.gradient_test.aggregation import (
     ImageReport,
     MethodReport,
     MultiMethodReport,
     TileResult,
 )
-from .analysis import run_gradient_analysis
-from .comparison import run_gradient_analysis_multi
-from .gradient_analysis import (
+from analysis_pipeline.gradient_test.analysis import run_gradient_analysis
+from analysis_pipeline.gradient_test.comparison import run_gradient_analysis_multi
+from analysis_pipeline.gradient_test.gradient_analysis import (
     compute_gradients,
     compute_gradients_2d,
     compute_gradients_3d,
 )
-from .per_tile import per_image_tile_scan
-from .statistics import STATISTICS, StatisticSpec, get_statistic
+from analysis_pipeline.gradient_test.per_tile import per_image_tile_scan
+from analysis_pipeline.gradient_test.statistics import STATISTICS, StatisticSpec, get_statistic
 
 __all__ = [
     "ImageReport",

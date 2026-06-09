@@ -14,9 +14,9 @@ import sys
 
 import numpy as np
 
-from ..config.analysis import load_gradient_test_config_from_args
-from ..gradient_test.comparison import run_gradient_analysis_multi
-from ..utils import ensure_4d, load_prediction
+from analysis_pipeline.config.analysis import load_gradient_test_config_from_args
+from analysis_pipeline.gradient_test.comparison import run_gradient_analysis_multi
+from analysis_pipeline.utils import ensure_4d, load_prediction
 
 
 def parse_comma_separated_ints(value: str) -> list[int]:
