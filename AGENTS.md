@@ -22,9 +22,13 @@ Quick commands:
 /localscratch/miniforge3/envs/sliding_tiling_env/bin/python tests/test_calibration.py
 /localscratch/miniforge3/envs/sliding_tiling_env/bin/python tests/test_frc.py
 
-# CLI smoke
+# CLI smoke (single-method)
 /localscratch/miniforge3/envs/sliding_tiling_env/bin/python -m analysis_pipeline.cli.analyze --help
 /localscratch/miniforge3/envs/sliding_tiling_env/bin/python -m analysis_pipeline.cli.frc_analyze --help
+
+# CLI smoke (multi-method comparison)
+/localscratch/miniforge3/envs/sliding_tiling_env/bin/python -m analysis_pipeline.cli.analyze_multi --help
+/localscratch/miniforge3/envs/sliding_tiling_env/bin/python -m analysis_pipeline.cli.frc_analyze_multi --help
 ```
 
 If a dep is missing, `pip install <pkg>` inside the env — don't switch to another env.
@@ -39,18 +43,26 @@ Entry points:
 
 Two metrics ship today:
 
-- **Gradient test** (reference-free, per-tile permutation hypothesis test): CLI `analyze-experiment` → [src/analysis_pipeline/cli/analyze.py](src/analysis_pipeline/cli/analyze.py); Python API `run_gradient_analysis_multi` in [src/analysis_pipeline/gradient_test/analysis.py](src/analysis_pipeline/gradient_test/analysis.py).
-- **FRC** (reference-based, 2-D Fourier Ring Correlation vs. ground truth): CLI `frc-experiment` → [src/analysis_pipeline/cli/frc_analyze.py](src/analysis_pipeline/cli/frc_analyze.py); Python API `run_frc_analysis_multi` in [src/analysis_pipeline/frc/analysis.py](src/analysis_pipeline/frc/analysis.py). Spec: [agents_artifacts/FRC_metric.md](agents_artifacts/FRC_metric.md).
+- **Gradient test** (reference-free, per-tile permutation hypothesis test):
+  - Single method (primary API): CLI `analyze-experiment` → [src/analysis_pipeline/cli/analyze.py](src/analysis_pipeline/cli/analyze.py); Python API `run_gradient_analysis` in [src/analysis_pipeline/gradient_test/analysis.py](src/analysis_pipeline/gradient_test/analysis.py).
+  - Multi-method comparison: CLI `analyze-experiment-multi` → [src/analysis_pipeline/cli/analyze_multi.py](src/analysis_pipeline/cli/analyze_multi.py); Python API `run_gradient_analysis_multi` in [src/analysis_pipeline/gradient_test/comparison.py](src/analysis_pipeline/gradient_test/comparison.py).
+- **FRC** (reference-based, 2-D Fourier Ring Correlation vs. ground truth):
+  - Single method (primary API): CLI `frc-experiment` → [src/analysis_pipeline/cli/frc_analyze.py](src/analysis_pipeline/cli/frc_analyze.py); Python API `run_frc_analysis` in [src/analysis_pipeline/frc/analysis.py](src/analysis_pipeline/frc/analysis.py).
+  - Multi-method comparison: CLI `frc-experiment-multi` → [src/analysis_pipeline/cli/frc_analyze_multi.py](src/analysis_pipeline/cli/frc_analyze_multi.py); Python API `run_frc_analysis_multi` in [src/analysis_pipeline/frc/comparison.py](src/analysis_pipeline/frc/comparison.py). Spec: [agents_artifacts/FRC_metric.md](agents_artifacts/FRC_metric.md).
 
 ## Layout
 
 ```
 src/analysis_pipeline/
-├── cli/analyze.py            # argparse CLI; per-tile flags only
+├── cli/
+│   ├── analyze.py            # single-method per-tile CLI (primary API)
+│   ├── analyze_multi.py      # multi-method per-tile comparison CLI
+│   ├── frc_analyze.py        # single-method FRC CLI (primary API)
+│   └── frc_analyze_multi.py  # multi-method FRC comparison CLI
 ├── config/
 │   ├── gradient.py           # GradientTestConfig (per-tile permutation params)
 │   ├── frc.py                # FRCConfig
-│   └── analysis.py           # AnalysisConfig + FRCAnalysisConfig + CLI loaders
+│   └── analysis.py           # AnalysisConfig + FRCAnalysisConfig + single-method variants + CLI loaders
 ├── gradient_test/            # per-tile permutation hypothesis test (reference-free)
 │   ├── seams.py              # closed-form seam positions from TiledPatching
 │   ├── tiles.py              # kept-region enumeration + owned-seam list
@@ -59,13 +71,15 @@ src/analysis_pipeline/
 │   ├── permutation.py        # vectorized block-permutation engine
 │   ├── aggregation.py        # TileResult / ImageReport / MethodReport dataclasses
 │   ├── per_tile.py           # per-image orchestrator (one slice in, one report out)
-│   ├── analysis.py           # multi-method orchestrator (legacy entry name)
+│   ├── analysis.py           # single-method orchestrator (primary API)
+│   ├── comparison.py         # multi-method wrapper (builds on analysis.py)
 │   └── gradient_analysis.py  # compute_gradients_{2d,3d} helpers only
 ├── frc/                      # Fourier Ring Correlation vs. GT (reference-based)
 │   ├── windowing.py          # 2-D Hamming window — mandatory pre-FFT taper
 │   ├── frc.py                # per-image FRC curve (FFT + radial bincount)
 │   ├── aggregation.py        # FRCImageResult / FRCMethodReport / FRCMultiMethodReport
-│   ├── analysis.py           # multi-method orchestrator
+│   ├── analysis.py           # single-method orchestrator (primary API)
+│   ├── comparison.py         # multi-method wrapper (builds on analysis.py)
 │   ├── plotting.py           # mean curve + 95% CI bands + harmonic verticals
 │   ├── reduction.py          # frc_to_scalar — stub, raises NotImplementedError (§3.7)
 │   └── fsc.py                # 3-D FSC — stub only (§5)
@@ -142,7 +156,7 @@ Stitching artifacts show up as dips at `k/S` for `k = 1, 2, …`, where `S` is t
 ## Conventions
 
 - Arrays are **channel-first**: 2-D `(N, C, H, W)`, 3-D `(N, C, D, H, W)`. `ensure_4d` inserts the channel axis at position 1 for 3-D inputs. Dimensionality is inferred from `predictions.ndim` (4 → 2-D, 5 → 3-D).
-- `tile_size` / `overlap` may be a flat per-axis list (`[64, 64]`) applied to every method, or a per-method nested list (`[[64, 64], [32, 32]]`) — broadcast in `_broadcast_per_method_spec` ([gradient_test/analysis.py](src/analysis_pipeline/gradient_test/analysis.py)).
+- `tile_size` / `overlap` may be a flat per-axis list (`[64, 64]`) applied to every method, or a per-method nested list (`[[64, 64], [32, 32]]`) — broadcast in `_broadcast_per_method_spec` ([gradient_test/comparison.py](src/analysis_pipeline/gradient_test/comparison.py)) for the comparison entry point. The single-method API takes a flat per-axis list only.
 - 3-D z-direction is pooled with x/y by default. `pool_z_with_xy=False` is reserved for v2 and currently emits a warning while still pooling.
 - Single channel only per run; the legacy `--channel 2` magic-iterate-over-channels behaviour is removed. Call once per channel if you need multiple.
 
@@ -159,7 +173,23 @@ Stitching artifacts show up as dips at `k/S` for `k = 1, 2, …`, where `S` is t
 ```bash
 pip install -e .
 
+# Single-method (primary use case)
 analyze-experiment \
+  --model_name microsplit \
+  --dataset MyDataset \
+  --prediction pred.tiff \
+  --method_name SW \
+  --save_dir ./results \
+  --tile_size 64,64 \
+  --overlap 32,32 \
+  --statistic kl \
+  --n_permutations 1000 \
+  --strip_width 4 \
+  --block_size 3 \
+  --channel 0
+
+# Multi-method comparison
+analyze-experiment-multi \
   --model_name microsplit \
   --dataset MyDataset \
   --predictions "pred1.tiff,pred2.tiff" \
@@ -174,7 +204,9 @@ analyze-experiment \
   --channel 0
 ```
 
-Output: `./results/per_tile_report.pkl` with a `MultiMethodReport`, plus a console-printed summary table.
+Output:
+- Single-method: `./results/<method_name>_per_tile_report.pkl` with a `MethodReport`.
+- Multi-method: `./results/per_tile_report.pkl` with a `MultiMethodReport`, plus a console-printed summary table.
 
 ## Verification scripts
 

@@ -35,8 +35,10 @@ dev = [
 
 [project.scripts]
 analyze-experiment = "analysis_pipeline.cli.analyze:main"
+analyze-experiment-multi = "analysis_pipeline.cli.analyze_multi:main"
 calibrate-block-size = "analysis_pipeline.cli.calibrate:main"
 frc-experiment = "analysis_pipeline.cli.frc_analyze:main"
+frc-experiment-multi = "analysis_pipeline.cli.frc_analyze_multi:main"
 
 [build-system]
 requires = ["setuptools>=65.0", "wheel"]
