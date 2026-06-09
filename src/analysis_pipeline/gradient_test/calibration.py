@@ -19,6 +19,7 @@ from typing import Optional, Sequence
 import numpy as np
 
 from analysis_pipeline.gradient_test.per_tile import per_image_tile_scan
+from analysis_pipeline.gradient_test.statistics import StatisticName
 
 
 @dataclass
@@ -75,7 +76,7 @@ def calibrate_block_size(
     tile_size: Sequence[int],
     overlap: Sequence[int],
     strip_width: int = 4,
-    statistic: str = "kl",
+    statistic: StatisticName = "kl",
     n_permutations: int = 1000,
     num_bins_per_tile: int = 32,
     alpha: float = 0.05,

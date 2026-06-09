@@ -10,12 +10,13 @@ from __future__ import annotations
 from typing import Sequence
 
 import numpy as np
+from tqdm import tqdm
 
 from analysis_pipeline.gradient_test.aggregation import ImageReport, TileResult, aggregate_image
 from analysis_pipeline.gradient_test.gradient_analysis import compute_gradients
 from analysis_pipeline.gradient_test.permutation import permutation_pvalue
 from analysis_pipeline.gradient_test.sampling import sample_tile
-from analysis_pipeline.gradient_test.statistics import get_statistic
+from analysis_pipeline.gradient_test.statistics import StatisticName, get_statistic
 from analysis_pipeline.gradient_test.tiles import enumerate_tiles
 
 
@@ -56,7 +57,7 @@ def per_image_tile_scan(
     strip_width: int,
     block_size: int,
     n_permutations: int,
-    statistic: str,
+    statistic: StatisticName,
     alpha: float,
     num_bins_per_tile: int,
     rng: np.random.Generator,
@@ -123,7 +124,7 @@ def per_image_tile_scan(
 
     tile_results: list[TileResult] = []
 
-    for tile in tiles_list:
+    for tile in tqdm(tiles_list, desc="Running tests for tiles", unit="tile"):
         if tile.n_seams < 2:
             tile_results.append(
                 TileResult(

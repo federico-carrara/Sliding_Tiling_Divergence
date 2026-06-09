@@ -17,6 +17,7 @@ import numpy as np
 
 from analysis_pipeline.gradient_test.aggregation import MultiMethodReport
 from analysis_pipeline.gradient_test.analysis import run_gradient_analysis
+from analysis_pipeline.gradient_test.statistics import StatisticName
 
 
 def _broadcast_per_method_spec(
@@ -66,7 +67,7 @@ def run_gradient_analysis_multi(
     tile_size: list,
     overlap: list,
     *,
-    statistic: str = "kl",
+    statistic: StatisticName = "kl",
     strip_width: int = 4,
     block_size: int = 3,
     n_permutations: int = 1000,
@@ -188,7 +189,7 @@ def run_gradient_analysis_multi(
 
 
 def _print_summary(
-    report: MultiMethodReport, method_names: list[str], statistic: str
+    report: MultiMethodReport, method_names: list[str], statistic: StatisticName
 ) -> None:
     """Print a human-readable summary of a multi-method report.
 

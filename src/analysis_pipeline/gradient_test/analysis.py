@@ -16,16 +16,18 @@ import numpy as np
 
 from analysis_pipeline.gradient_test.aggregation import MethodReport, aggregate_method
 from analysis_pipeline.gradient_test.per_tile import per_image_tile_scan
+from analysis_pipeline.gradient_test.statistics import StatisticName
 
 
 def run_gradient_analysis(
     predictions: np.ndarray,
-    save_dir: Optional[Path],
     tile_size: list[int],
     overlap: list[int],
+    channel: int,
     *,
+    save_dir: Optional[Path] = None,
     method_name: str = "method",
-    statistic: str = "kl",
+    statistic: StatisticName = "js",
     strip_width: int = 4,
     block_size: int = 3,
     n_permutations: int = 1000,
@@ -33,7 +35,6 @@ def run_gradient_analysis(
     num_bins_per_tile: int = 32,
     random_seed: int = 0,
     pool_z_with_xy: bool = True,
-    channel: int = 0,
 ) -> MethodReport:
     """Run the per-tile metric on a set of predictions for a single method.
 
@@ -49,16 +50,18 @@ def run_gradient_analysis(
     ----------
     predictions : np.ndarray
         Channel-first prediction array for one method.
-    save_dir : pathlib.Path, optional
-        Directory for the pickled report (created if missing); pass ``None``
-        to skip writing.
     tile_size : list of int
         Per-spatial-axis tile size.
     overlap : list of int
         Per-spatial-axis overlap.
+    channel : int
+        Channel index to analyse.
+    save_dir : pathlib.Path, optional
+        Directory for the pickled report (created if missing); pass ``None``
+        to skip writing. Default is ``None``.
     method_name : str, default="method"
         Display name used in logs and the pickle filename.
-    statistic : str, default="kl"
+    statistic : StatisticName, default="js"
         Two-sample discrepancy statistic name.
     strip_width : int, default=4
         Control-strip half-width ``N``.
@@ -74,8 +77,6 @@ def run_gradient_analysis(
         RNG seed.
     pool_z_with_xy : bool, default=True
         If False (reserved for v2), run separate xy and z tests in 3D.
-    channel : int, default=0
-        Channel index to analyse.
 
     Returns
     -------

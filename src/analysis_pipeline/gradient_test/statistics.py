@@ -206,6 +206,9 @@ def mean_abs_ratio(seam: np.ndarray, control: np.ndarray) -> float:
     return m_s / (m_c + EPS)
 
 
+StatisticName = Literal["kl", "js", "ks", "mean_abs_ratio", "wasserstein"]
+"""Names of the registered two-sample statistics (keys of :data:`STATISTICS`)."""
+
 VecKind = Literal["binned", "ks", "abs_ratio", "scalar"]
 
 
@@ -242,7 +245,7 @@ STATISTICS: dict[str, StatisticSpec] = {
 }
 
 
-def get_statistic(name: str) -> StatisticSpec:
+def get_statistic(name: StatisticName) -> StatisticSpec:
     """Look up a registered :class:`StatisticSpec` by name.
 
     Parameters
