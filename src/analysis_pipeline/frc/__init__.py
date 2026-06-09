@@ -15,7 +15,8 @@ from .aggregation import (
     FRCMultiMethodReport,
     aggregate_method,
 )
-from .analysis import run_frc_analysis_multi
+from .analysis import run_frc_analysis
+from .comparison import run_frc_analysis_multi
 from .frc import per_image_frc
 from .windowing import apply_hamming_window_2d
 
@@ -26,5 +27,6 @@ __all__ = [
     "aggregate_method",
     "apply_hamming_window_2d",
     "per_image_frc",
+    "run_frc_analysis",
     "run_frc_analysis_multi",
 ]

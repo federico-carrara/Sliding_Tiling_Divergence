@@ -52,17 +52,13 @@ class AnalysisConfig(BaseModel):
         ------
         ValueError
             If ``predictions`` and ``method_names`` have different lengths,
-            or the number of predictions is outside the supported ``[2, 5]`` range.
+            or the number of predictions is outside the supported ``[1, 5]`` range.
         """
         if len(self.predictions) != len(self.method_names):
             raise ValueError(
                 f"Number of predictions ({len(self.predictions)}) must match "
                 f"method names ({len(self.method_names)})"
             )
-        if len(self.predictions) < 2:
-            raise ValueError("At least 2 predictions required")
-        if len(self.predictions) > 5:
-            raise ValueError("Maximum 5 predictions supported")
         return self
 
 
@@ -116,7 +112,7 @@ class FRCAnalysisConfig(BaseModel):
         ------
         ValueError
             If ``predictions``, ``ground_truths``, and ``method_names``
-            disagree on length, the count falls outside ``[2, 5]``, or
+            disagree on length, the count falls outside ``[1, 5]``, or
             ``tile_inner_sizes`` (when given) does not match the methods
             length.
         """
@@ -131,10 +127,6 @@ class FRCAnalysisConfig(BaseModel):
                 f"Number of method_names ({len(self.method_names)}) must "
                 f"match predictions ({n})"
             )
-        if n < 2:
-            raise ValueError("At least 2 (prediction, ground_truth) pairs required")
-        if n > 5:
-            raise ValueError("Maximum 5 (prediction, ground_truth) pairs supported")
         if self.tile_inner_sizes is not None and len(self.tile_inner_sizes) != n:
             raise ValueError(
                 f"tile_inner_sizes has {len(self.tile_inner_sizes)} entries; "
@@ -259,5 +251,82 @@ def load_frc_config_from_args(args) -> FRCAnalysisConfig:
         ground_truths=gt_files,
         method_names=method_names,
         tile_inner_sizes=_parse_tile_inner_sizes(args.tile_inner_sizes),
+        frc=frc,
+    )
+
+
+def load_gradient_test_single_config_from_args(args) -> AnalysisConfig:
+    """Build an :class:`AnalysisConfig` from single-method CLI arguments.
+
+    The singular ``--prediction`` / ``--method_name`` flags are wrapped into
+    1-element lists so the same :class:`AnalysisConfig` is used for both the
+    single- and multi-method CLIs.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed CLI arguments produced by the single-method ``analyze``
+        CLI's ``parse_args``.
+
+    Returns
+    -------
+    AnalysisConfig
+        Validated configuration ready to drive the pipeline.
+    """
+    gradient_test = GradientTestConfig(
+        tile_size=list(args.tile_size),
+        overlap=list(args.overlap),
+        statistic=args.statistic,
+        strip_width=args.strip_width,
+        block_size=args.block_size,
+        n_permutations=args.n_permutations,
+        alpha=args.alpha,
+        num_bins_per_tile=args.num_bins_per_tile,
+        random_seed=args.random_seed,
+        pool_z_with_xy=args.pool_z_with_xy,
+        channel=args.channel,
+    )
+
+    return AnalysisConfig(
+        name=args.model_name,
+        dataset=args.dataset,
+        save_dir=Path(args.save_dir),
+        predictions=[args.prediction.strip()],
+        method_names=[args.method_name.strip()],
+        gradient_test=gradient_test,
+    )
+
+
+def load_frc_single_config_from_args(args) -> FRCAnalysisConfig:
+    """Build an :class:`FRCAnalysisConfig` from single-method CLI arguments.
+
+    The singular ``--prediction`` / ``--ground_truth`` / ``--method_name``
+    flags are wrapped into 1-element lists so the same
+    :class:`FRCAnalysisConfig` is used for both the single- and multi-method
+    CLIs.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed CLI arguments produced by the single-method ``frc_analyze``
+        CLI's ``parse_args``.
+
+    Returns
+    -------
+    FRCAnalysisConfig
+        Validated configuration ready to drive the FRC pipeline.
+    """
+    frc = FRCConfig(
+        apply_window=args.apply_window,
+        channel=args.channel,
+    )
+
+    return FRCAnalysisConfig(
+        name=args.model_name,
+        dataset=args.dataset,
+        save_dir=Path(args.save_dir),
+        predictions=[args.prediction.strip()],
+        ground_truths=[args.ground_truth.strip()],
+        method_names=[args.method_name.strip()],
         frc=frc,
     )

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Multi-method FRC-metric CLI.
+"""Single-method FRC-metric CLI.
 
-Loads 2-5 (prediction, ground-truth) pairs, computes a per-image FRC curve
-for each, aggregates per-frequency mean + 95% CI per method, and pickles
-the report to ``save_dir/frc_report.pkl``. A headline plot is written to
-``save_dir/frc_curves.png``.
+Loads one (prediction, ground-truth) pair, computes a per-image FRC curve
+for each image, aggregates per-frequency mean + 95% CI, and pickles the
+report to ``save_dir/<method_name>_frc_report.pkl``.
 """
 
 from __future__ import annotations
@@ -14,14 +13,13 @@ import sys
 
 import numpy as np
 
-from ..config.analysis import load_frc_config_from_args
-from ..frc.analysis import run_frc_analysis_multi
-from ..frc.plotting import plot_frc_curves
+from ..config.analysis import load_frc_single_config_from_args
+from ..frc.analysis import run_frc_analysis
 from ..utils import ensure_4d, load_prediction
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments for the FRC CLI.
+    """Parse command-line arguments for the single-method FRC CLI.
 
     Returns
     -------
@@ -30,8 +28,8 @@ def parse_args() -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(
         description=(
-            "Fourier Ring Correlation against ground truth, for 2-5 methods "
-            "evaluated on the same image set."
+            "Fourier Ring Correlation against ground truth for a single "
+            "method on its image set."
         )
     )
 
@@ -43,30 +41,27 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--dataset", required=True, help="Dataset name.")
     parser.add_argument(
-        "--predictions",
+        "--prediction",
         required=True,
         type=str,
-        help="Comma-separated prediction files (.tiff/.pkl).",
+        help="Prediction file (.tiff/.pkl).",
     )
     parser.add_argument(
-        "--ground_truths",
+        "--ground_truth",
         required=True,
         type=str,
-        help=(
-            "Comma-separated ground-truth files (.tiff/.pkl), in 1:1 order "
-            "with --predictions."
-        ),
+        help="Ground-truth file (.tiff/.pkl) paired with --prediction.",
     )
     parser.add_argument(
-        "--method_names",
+        "--method_name",
         required=True,
         type=str,
-        help="Comma-separated method names, e.g. 'OG,SW'.",
+        help="Display name for the method (used in logs and the pickle filename).",
     )
     parser.add_argument(
         "--save_dir",
         required=True,
-        help="Directory for the pickled FRCMultiMethodReport and headline plot.",
+        help="Directory for the pickled FRCMethodReport.",
     )
 
     parser.add_argument(
@@ -82,23 +77,12 @@ def parse_args() -> argparse.Namespace:
             "enable only for sanity tests (real images need windowing)."
         ),
     )
-    parser.add_argument(
-        "--tile_inner_sizes",
-        type=str,
-        default=None,
-        help=(
-            "Optional per-method inner tile sizes for harmonic verticals on "
-            "the headline plot, e.g. '32,none'. Use 'none' for methods "
-            "without a fixed seam grid (SWiTi). Plot-decoration only — does "
-            "not affect numerics."
-        ),
-    )
 
     return parser.parse_args()
 
 
 def main() -> int:
-    """Run the FRC metric pipeline from CLI arguments.
+    """Run the FRC metric pipeline for a single method from CLI arguments.
 
     Returns
     -------
@@ -109,23 +93,25 @@ def main() -> int:
     args = parse_args()
 
     try:
-        config = load_frc_config_from_args(args)
+        config = load_frc_single_config_from_args(args)
     except ValueError as e:
         print(f"Configuration error: {e}", file=sys.stderr)
         return 1
 
+    prediction_file = config.predictions[0]
+    ground_truth_file = config.ground_truths[0]
+    method_name = config.method_names[0]
+
     print("=" * 60)
-    print("FRC METRIC PIPELINE")
+    print("FRC METRIC PIPELINE (single method)")
     print("=" * 60)
-    print(f"Methods:        {', '.join(config.method_names)}")
+    print(f"Method:         {method_name}")
     print(f"Dataset:        {config.dataset}")
-    print(f"Predictions:    {config.predictions}")
-    print(f"Ground truths:  {config.ground_truths}")
+    print(f"Prediction:     {prediction_file}")
+    print(f"Ground truth:   {ground_truth_file}")
     print(f"Save dir:       {config.save_dir}")
     print(f"Apply window:   {config.frc.apply_window}")
     print(f"Channel:        {config.frc.channel}")
-    if config.tile_inner_sizes is not None:
-        print(f"Tile inner S:   {config.tile_inner_sizes}")
     print("=" * 60)
 
     config.save_dir.mkdir(parents=True, exist_ok=True)
@@ -139,41 +125,23 @@ def main() -> int:
         print(f"    shape: {arr.shape}")
         return arr
 
-    print("\nLoading predictions and ground truths...")
-    predictions_list: list[np.ndarray] = []
-    ground_truths_list: list[np.ndarray] = []
-    for pred_file, gt_file, method_name in zip(
-        config.predictions,
-        config.ground_truths,
-        config.method_names,
-        strict=True,
-    ):
-        try:
-            predictions_list.append(_load(pred_file, f"{method_name} (pred)"))
-            ground_truths_list.append(_load(gt_file, f"{method_name} (GT)"))
-        except Exception as e:
-            print(f"Error loading {method_name}: {e}", file=sys.stderr)
-            return 1
+    print("\nLoading prediction and ground truth...")
+    try:
+        prediction = _load(prediction_file, f"{method_name} (pred)")
+        ground_truth = _load(ground_truth_file, f"{method_name} (GT)")
+    except Exception as e:
+        print(f"Error loading {method_name}: {e}", file=sys.stderr)
+        return 1
 
     print("\nRunning FRC analysis...")
-    report = run_frc_analysis_multi(
-        predictions_list=predictions_list,
-        ground_truths_list=ground_truths_list,
-        method_names=config.method_names,
+    run_frc_analysis(
+        predictions=prediction,
+        ground_truths=ground_truth,
         save_dir=config.save_dir,
+        method_name=method_name,
         channel=config.frc.channel,
         apply_window=config.frc.apply_window,
     )
-
-    tile_inner_sizes_map = None
-    if config.tile_inner_sizes is not None:
-        tile_inner_sizes_map = dict(
-            zip(config.method_names, config.tile_inner_sizes, strict=True)
-        )
-
-    plot_path = config.save_dir / "frc_curves.png"
-    plot_frc_curves(report, tile_inner_sizes_map, save_path=plot_path)
-    print(f"\nHeadline plot saved to: {plot_path}")
 
     print(f"\nDone. Results saved to: {config.save_dir}")
     return 0

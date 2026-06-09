@@ -6,6 +6,8 @@ from .aggregation import (
     MultiMethodReport,
     TileResult,
 )
+from .analysis import run_gradient_analysis
+from .comparison import run_gradient_analysis_multi
 from .gradient_analysis import (
     compute_gradients,
     compute_gradients_2d,
@@ -26,4 +28,6 @@ __all__ = [
     "compute_gradients_3d",
     "get_statistic",
     "per_image_tile_scan",
+    "run_gradient_analysis",
+    "run_gradient_analysis_multi",
 ]
