@@ -15,7 +15,6 @@ from analysis_pipeline.gradient_test.gradient_analysis import (
 )
 from analysis_pipeline.gradient_test.per_tile import per_image_tile_scan
 from analysis_pipeline.gradient_test.plotting import (
-    build_tile_pvalue_map,
     plot_gradient_comparison,
     plot_pvalue_distribution,
     plot_significance_overlay,

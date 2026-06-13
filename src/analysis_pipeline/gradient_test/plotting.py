@@ -331,6 +331,71 @@ def _slice_start(sl: Optional[slice]) -> int:
     return int(sl.start)
 
 
+def _draw_seams_on_ax(
+    ax: "plt.Axes",
+    disp_shape: tuple[int, int],
+    full_hw: tuple[int, int],
+    tile_size: Sequence[int],
+    overlap: Sequence[int],
+    origin: tuple[int, int] = (0, 0),
+) -> None:
+    """Draw thin cyan lines at seam pixel positions on ``ax`` (ROI-aware)."""
+    h_full, w_full = full_hw
+    y0, x0 = origin
+    disp_h, disp_w = disp_shape
+    for x in compute_seam_positions(w_full, tile_size[-1], overlap[-1]):
+        xx = int(x) - x0
+        if 0 <= xx <= disp_w:
+            ax.axvline(xx - 0.5, color="cyan", lw=0.6, alpha=0.5)
+    for y in compute_seam_positions(h_full, tile_size[-2], overlap[-2]):
+        yy = int(y) - y0
+        if 0 <= yy <= disp_h:
+            ax.axhline(yy - 0.5, color="cyan", lw=0.6, alpha=0.5)
+
+
+def _strip_ax(ax: "plt.Axes") -> None:
+    """Remove ticks and spines from an image axis."""
+    ax.set_xticks([])
+    ax.set_yticks([])
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+
+def _gradient_display(
+    image2d: NDArray, axis: Optional[int]
+) -> tuple[NDArray, bool]:
+    """Compute a displayable gradient image aligned to the image grid.
+
+    Uses :func:`numpy.gradient` (central differences, same shape as the input)
+    so the result lines up pixel-for-pixel with the image and shares its ROI
+    crop / seam overlay.
+
+    Parameters
+    ----------
+    image2d : NDArray
+        2-D image ``(H, W)``.
+    axis : Optional[int]
+        ``0`` for the y-gradient, ``1`` for the x-gradient, or ``None`` for the
+        gradient magnitude ``sqrt(g_y**2 + g_x**2)``.
+
+    Returns
+    -------
+    grad : NDArray
+        The gradient image, same shape as ``image2d``.
+    symmetric : bool
+        ``True`` for a signed single-axis gradient (use symmetric contrast),
+        ``False`` for the non-negative magnitude.
+    """
+    g_y, g_x = np.gradient(np.asarray(image2d, dtype=np.float64))
+    if axis is None:
+        return np.hypot(g_y, g_x), False
+    if axis == 0:
+        return g_y, True
+    if axis == 1:
+        return g_x, True
+    raise ValueError(f"`gradient_axis` must be 0, 1 or None; got {axis}.")
+
+
 def _draw_overlay_on_ax(
     ax: "plt.Axes",
     image2d: NDArray,
@@ -366,21 +431,10 @@ def _draw_overlay_on_ax(
         interpolation="nearest",
     )
     if draw_seams and full_hw is not None:
-        h_full, w_full = full_hw
-        y0, x0 = origin
-        disp_h, disp_w = image2d.shape
-        for x in compute_seam_positions(w_full, tile_size[-1], overlap[-1]):
-            xx = int(x) - x0
-            if 0 <= xx <= disp_w:
-                ax.axvline(xx - 0.5, color="cyan", lw=0.6, alpha=0.5)
-        for y in compute_seam_positions(h_full, tile_size[-2], overlap[-2]):
-            yy = int(y) - y0
-            if 0 <= yy <= disp_h:
-                ax.axhline(yy - 0.5, color="cyan", lw=0.6, alpha=0.5)
-    ax.set_xticks([])
-    ax.set_yticks([])
-    for spine in ax.spines.values():
-        spine.set_visible(False)
+        _draw_seams_on_ax(
+            ax, image2d.shape, full_hw, tile_size, overlap, origin
+        )
+    _strip_ax(ax)
     return mappable
 
 
@@ -398,6 +452,10 @@ def plot_significance_overlay(
     overlay_cmap: str = "inferno",
     overlay_alpha: float = 0.6,
     draw_seams: bool = False,
+    show_gradient: bool = True,
+    gradient_axis: Optional[int] = None,
+    gradient_cmap: str = "gray",
+    gradient_percentile: float = 99.0,
     title: Optional[str] = None,
     facecolor: str = "black",
     save_path: Optional[Union[str, Path]] = None,
@@ -408,7 +466,9 @@ def plot_significance_overlay(
     Tiles with ``p < alpha`` are painted with a ``-log10(p)`` heatmap (brighter
     = more significant) over the grayscale image; non-significant and skipped
     tiles are transparent. The bottom of the colour bar corresponds to
-    ``p = alpha``.
+    ``p = alpha``. When ``show_gradient`` is set, the image's gradient is drawn
+    in a second panel to the right, on the same ROI / seam grid, so the
+    significance pattern can be read against the underlying gradient structure.
 
     Parameters
     ----------
@@ -434,8 +494,21 @@ def plot_significance_overlay(
         Opacity of the overlay. Default ``0.6``.
     draw_seams : bool
         Draw thin lines at seam pixel positions for context. Default ``False``.
+    show_gradient : bool
+        Add a second panel to the right showing the image gradient. Default
+        ``True``.
+    gradient_axis : Optional[int]
+        Which gradient to display in that panel: ``0`` for the y-gradient,
+        ``1`` for the x-gradient, or ``None`` (default) for the gradient
+        magnitude ``sqrt(g_y**2 + g_x**2)``.
+    gradient_cmap : str
+        Colormap for the gradient panel. Default ``"gray"``.
+    gradient_percentile : float
+        Percentile used to set the gradient panel's contrast robustly to
+        outliers (symmetric for a signed axis, ``[0, p]`` for the magnitude).
+        Default ``99.0``.
     title : Optional[str]
-        Axis title. Default None.
+        Axis title (placed over the overlay panel). Default None.
     facecolor : str
         Figure background colour. Default ``"black"``.
     save_path : Optional[Union[str, Path]]
@@ -453,6 +526,12 @@ def plot_significance_overlay(
     img2d, pmap2d = _select_2d(image, pmap, z_idx)
     full_hw = (img2d.shape[0], img2d.shape[1])
 
+    # gradient computed on the full slice (so edge effects sit at true image
+    # edges) then cropped to the same ROI as the overlay.
+    grad2d = (
+        _gradient_display(img2d, gradient_axis) if show_gradient else None
+    )
+
     y_slice = _as_slice(y_ROI)
     x_slice = _as_slice(x_ROI)
     img2d = _crop(img2d, y_slice, x_slice)
@@ -462,8 +541,13 @@ def plot_significance_overlay(
     vlims = _score_vlims([pmap2d], alpha)
     text_color = "white" if facecolor == "black" else "black"
 
-    fig, ax = plt.subplots(figsize=(6.5, 6.5), constrained_layout=True)
+    ncols = 2 if show_gradient else 1
+    fig, axes = plt.subplots(
+        1, ncols, figsize=(6.5 * ncols, 6.5), squeeze=False, constrained_layout=True
+    )
     fig.patch.set_facecolor(facecolor)
+    # gradient panel (if any) goes on the left, the overlay on the right.
+    ax = axes[0, -1]
     mappable = _draw_overlay_on_ax(
         ax,
         img2d,
@@ -484,6 +568,27 @@ def plot_significance_overlay(
     cbar.ax.tick_params(colors=text_color)
     if title:
         ax.set_title(title, fontsize=14, color=text_color)
+
+    if show_gradient:
+        grad_img, symmetric = grad2d
+        grad_img = _crop(grad_img, y_slice, x_slice)
+        vmax = float(np.percentile(np.abs(grad_img), gradient_percentile))
+        gvmin, gvmax = (-vmax, vmax) if symmetric else (0.0, vmax)
+        gax = axes[0, 0]
+        gmappable = gax.imshow(grad_img, cmap=gradient_cmap, vmin=gvmin, vmax=gvmax)
+        if draw_seams:
+            _draw_seams_on_ax(
+                gax, grad_img.shape, full_hw, tile_size, overlap, origin
+            )
+        _strip_ax(gax)
+        gcbar = fig.colorbar(gmappable, ax=gax, fraction=0.046, pad=0.04)
+        gcbar.ax.tick_params(colors=text_color)
+        grad_label = (
+            "gradient magnitude"
+            if gradient_axis is None
+            else ("y-gradient", "x-gradient")[gradient_axis]
+        )
+        gax.set_title(grad_label, fontsize=14, color=text_color)
 
     if save_path is not None:
         save_path = Path(save_path)
