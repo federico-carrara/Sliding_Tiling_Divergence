@@ -450,7 +450,7 @@ def plot_significance_overlay(
     x_ROI: Optional[Union[slice, tuple[int, int]]] = None,
     cmap: str = "gray",
     overlay_cmap: str = "inferno",
-    overlay_alpha: float = 0.6,
+    overlay_alpha: float = 0.5,
     draw_seams: bool = False,
     show_gradient: bool = True,
     gradient_axis: Optional[int] = None,
@@ -674,6 +674,282 @@ def plot_pvalue_distribution(
         or f"p-value distribution — frac rejected = {frac:.3f}  (n = {pvals.size})"
     )
     ax.legend()
+
+    if save_path is not None:
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Saving plot to {save_path}")
+        fig.savefig(save_path, dpi=dpi, bbox_inches="tight", facecolor=facecolor)
+
+    return fig
+
+
+def _per_tile_texture(
+    texture_image: NDArray,
+    tiles: Sequence,
+    use_gradient_magnitude: bool,
+) -> dict[tuple[int, ...], float]:
+    """Compute a per-tile "texture" (local variability) scalar.
+
+    Texture is the standard deviation, over each tile's pixel rectangle, of
+    either the raw intensity or the gradient magnitude. It quantifies the
+    natural local variability against which a seam signal must compete: low
+    texture == flat tile.
+
+    Parameters
+    ----------
+    texture_image : NDArray
+        2-D ``(H, W)`` reference image defining the texture. Use a *shared*
+        reference (e.g. the ground truth) so the texture axis is common across
+        methods being compared.
+    tiles : Sequence of Tile
+        Tiles from :func:`enumerate_tiles` for ``texture_image.shape``.
+    use_gradient_magnitude : bool
+        If ``True`` use ``std`` of ``sqrt(g_y**2 + g_x**2)`` over the tile; if
+        ``False`` use ``std`` of the raw intensity.
+
+    Returns
+    -------
+    dict
+        Mapping from tile ``coord`` to its texture scalar.
+    """
+    img = np.asarray(texture_image, dtype=np.float64)
+    if img.ndim != 2:
+        raise ValueError(f"texture_image must be 2-D; got ndim={img.ndim}")
+    if use_gradient_magnitude:
+        g_y, g_x = np.gradient(img)
+        field = np.hypot(g_y, g_x)
+    else:
+        field = img
+    texture: dict[tuple[int, ...], float] = {}
+    for t in tiles:
+        (y0, y1), (x0, x1) = t.ranges
+        patch = field[y0:y1, x0:x1]
+        texture[t.coord] = float(patch.std()) if patch.size else float("nan")
+    return texture
+
+
+def _wilson_interval(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
+    """Wilson score interval for a binomial proportion ``k / n``.
+
+    More honest than the normal approximation for the small per-bin counts and
+    near-0 / near-1 rejection rates this plot encounters.
+    """
+    if n == 0:
+        return (float("nan"), float("nan"))
+    p = k / n
+    denom = 1.0 + z * z / n
+    center = (p + z * z / (2 * n)) / denom
+    half = (z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))) / denom
+    return (center - half, center + half)
+
+
+def plot_flatness_stratified_rejection(
+    reports: Mapping[str, ImageReport],
+    texture_image: NDArray,
+    *,
+    tile_size: Sequence[int],
+    overlap: Sequence[int],
+    alpha: float = 0.05,
+    n_bins: int = 8,
+    bin_mode: str = "quantile",
+    use_gradient_magnitude: bool = True,
+    log_x: bool = True,
+    title: Optional[str] = None,
+    facecolor: str = "white",
+    save_path: Optional[Union[str, Path]] = None,
+    dpi: int = 150,
+) -> "plt.Figure":
+    """Plot per-tile rejection rate as a function of local tile texture.
+
+    This is the diagnostic that adjudicates *why* a method rejects in flat
+    regions. Tiles are stratified by a **shared** texture scalar (computed once
+    from ``texture_image``, e.g. the ground truth, so every method sits on the
+    same x-axis), then for each method the fraction of tiles rejecting at
+    ``alpha`` is plotted per texture bin with a Wilson confidence band.
+
+    Interpretation
+    --------------
+    - A well-calibrated null (e.g. GT, which has no seams) should sit near
+      ``alpha`` across *all* texture bins — flat **or** textured.
+    - If a method's rejection rises specifically in the **low-texture** bins
+      while the null stays flat, the flat-region positives are a *real*,
+      texture-unmasked signal of that method, not a calibration artifact of the
+      narrow gradient distribution.
+    - If the null *also* climbs at low texture, the narrow-distribution regime
+      genuinely inflates the false-positive rate.
+
+    Parameters
+    ----------
+    reports : Mapping[str, ImageReport]
+        Per-image reports keyed by method name (all over the same geometry as
+        ``texture_image``). Typically ``{"GT": ..., "SWITi": ..., "Inner
+        Tiling": ...}``.
+    texture_image : NDArray
+        2-D ``(H, W)`` image defining the shared per-tile texture axis.
+    tile_size, overlap : Sequence[int]
+        TiledPatching tile size / overlap per spatial axis (same as the run).
+    alpha : float
+        Rejection threshold. Default ``0.05``.
+    n_bins : int
+        Number of texture bins. Default ``8``.
+    bin_mode : {"quantile", "linear"}
+        ``"quantile"`` for equal-count bins (robust to skewed texture
+        distributions), ``"linear"`` for equal-width bins. Default
+        ``"quantile"``.
+    use_gradient_magnitude : bool
+        Define texture from the gradient magnitude (``True``, default) or the
+        raw intensity (``False``).
+    log_x : bool
+        Use a logarithmic texture axis. Default ``True``.
+    title : Optional[str]
+        Axis title. Default summarises the configuration.
+    facecolor : str
+        Figure background colour. Default ``"white"``.
+    save_path : Optional[Union[str, Path]]
+        If given, save the figure here.
+    dpi : int
+        Resolution for the saved figure. Default ``150``.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure handle.
+
+    Raises
+    ------
+    ValueError
+        If ``reports`` is empty, ``bin_mode`` is unknown, or no valid tiles are
+        found across the reports.
+    """
+    if not reports:
+        raise ValueError("`reports` must contain at least one method.")
+    if bin_mode not in ("quantile", "linear"):
+        raise ValueError(f"bin_mode must be 'quantile' or 'linear'; got {bin_mode!r}")
+
+    texture_image = np.asarray(texture_image)
+    tiles = enumerate_tiles(texture_image.shape, tile_size, overlap)
+    texture_by_coord = _per_tile_texture(
+        texture_image, tiles, use_gradient_magnitude
+    )
+
+    # The set of valid (testable) coords and their texture is geometry-driven,
+    # hence identical across methods; gather it from the union to be safe.
+    valid_coords: set[tuple[int, ...]] = set()
+    for ir in reports.values():
+        for tr in ir.tiles:
+            if not np.isnan(tr.p):
+                valid_coords.add(tr.coord)
+    coords = sorted(
+        c for c in valid_coords if not np.isnan(texture_by_coord.get(c, np.nan))
+    )
+    if not coords:
+        raise ValueError("No valid tiles with finite texture across reports.")
+
+    textures = np.array([texture_by_coord[c] for c in coords], dtype=np.float64)
+
+    if bin_mode == "quantile":
+        edges = np.quantile(textures, np.linspace(0.0, 1.0, n_bins + 1))
+        edges = np.unique(edges)
+    else:
+        edges = np.linspace(textures.min(), textures.max(), n_bins + 1)
+    # assign each coord to a bin (rightmost edge inclusive)
+    bin_idx = np.clip(np.digitize(textures, edges[1:-1], right=False), 0, len(edges) - 2)
+    n_actual_bins = len(edges) - 1
+
+    # shared x position per bin = mean texture of its tiles
+    bin_x = np.array(
+        [
+            textures[bin_idx == b].mean() if np.any(bin_idx == b) else np.nan
+            for b in range(n_actual_bins)
+        ]
+    )
+    bin_counts = np.array(
+        [int(np.sum(bin_idx == b)) for b in range(n_actual_bins)]
+    )
+
+    text_color = "black" if facecolor == "white" else "white"
+    fig, ax = plt.subplots(figsize=(8.0, 5.0), constrained_layout=True)
+    fig.patch.set_facecolor(facecolor)
+
+    # faint tile-count histogram on a twin axis for context
+    ax_count = ax.twinx()
+    width = np.diff(edges)
+    ax_count.bar(
+        edges[:-1],
+        bin_counts,
+        width=width,
+        align="edge",
+        color="0.85",
+        edgecolor="0.7",
+        zorder=0,
+    )
+    ax_count.set_ylabel("tiles per bin", color="0.5")
+    ax_count.tick_params(axis="y", colors="0.5")
+    ax_count.set_zorder(ax.get_zorder() - 1)
+    ax.patch.set_visible(False)
+
+    cmap = plt.get_cmap("tab10")
+    for mi, (name, ir) in enumerate(reports.items()):
+        reject_by_coord = {
+            tr.coord: (tr.p < alpha)
+            for tr in ir.tiles
+            if not np.isnan(tr.p)
+        }
+        rej = np.array(
+            [reject_by_coord.get(c, np.nan) for c in coords], dtype=np.float64
+        )
+        frac = np.full(n_actual_bins, np.nan)
+        lo = np.full(n_actual_bins, np.nan)
+        hi = np.full(n_actual_bins, np.nan)
+        for b in range(n_actual_bins):
+            sel = (bin_idx == b) & np.isfinite(rej)
+            n = int(np.sum(sel))
+            if n == 0:
+                continue
+            k = int(np.sum(rej[sel]))
+            frac[b] = k / n
+            lo[b], hi[b] = _wilson_interval(k, n)
+
+        good = np.isfinite(frac) & np.isfinite(bin_x)
+        color = cmap(mi % 10)
+        ax.plot(
+            bin_x[good],
+            frac[good],
+            marker="o",
+            color=color,
+            label=name,
+            zorder=3,
+        )
+        ax.fill_between(
+            bin_x[good], lo[good], hi[good], color=color, alpha=0.2, zorder=2
+        )
+
+    ax.axhline(
+        alpha,
+        color="red",
+        linestyle="--",
+        linewidth=1.2,
+        label=f"α = {alpha}",
+        zorder=1,
+    )
+    if log_x:
+        ax.set_xscale("log")
+    tex_label = (
+        "per-tile gradient-magnitude std"
+        if use_gradient_magnitude
+        else "per-tile intensity std"
+    )
+    ax.set_xlabel(f"tile texture  ({tex_label}, from reference) →  flat to textured")
+    ax.set_ylabel("fraction of tiles rejected")
+    ax.set_ylim(-0.02, 1.02)
+    ax.set_title(
+        title
+        or f"Rejection rate vs. tile texture  ({bin_mode} bins, n={len(coords)} tiles)",
+        color=text_color,
+    )
+    ax.legend(loc="upper right", framealpha=0.9)
+    ax.set_zorder(ax_count.get_zorder() + 1)
 
     if save_path is not None:
         save_path = Path(save_path)
