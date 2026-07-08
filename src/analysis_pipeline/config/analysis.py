@@ -21,7 +21,7 @@ class AnalysisConfig(BaseModel):
     dataset : str
         Dataset name.
     save_dir : pathlib.Path
-        Directory where the pickled ``MultiMethodReport`` is written.
+        Directory where the JSON ``MultiMethodReport`` is written.
     predictions : list of str
         Prediction file paths (one per method).
     method_names : list of str

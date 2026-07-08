@@ -7,7 +7,6 @@ predictions. Multi-method comparison lives in :mod:`.comparison`.
 
 from __future__ import annotations
 
-import pickle
 import warnings
 from pathlib import Path
 from typing import Optional, Sequence
@@ -51,8 +50,8 @@ def run_gradient_analysis(
     spatial axis and must match the TiledPatching configuration used to
     produce the predictions.
 
-    If ``save_dir`` is not None, the report is pickled to
-    ``save_dir / f"{method_name}_per_tile_report.pkl"``.
+    If ``save_dir`` is not None, the report is serialized as JSON to
+    ``save_dir / f"{method_name}_per_tile_report.json"``.
 
     Parameters
     ----------
@@ -73,10 +72,10 @@ def run_gradient_analysis(
         Name of the dataset the predictions were drawn from; stamped onto the
         report for downstream analysis.
     save_dir : pathlib.Path, optional
-        Directory for the pickled report (created if missing); pass ``None``
+        Directory for the JSON report (created if missing); pass ``None``
         to skip writing. Default is ``None``.
     method_name : str, default="method"
-        Display name used in logs and the pickle filename.
+        Display name used in logs and the report filename.
     statistic : StatisticName, default="js"
         Two-sample discrepancy statistic name.
     strip_width : int, default=4
@@ -194,11 +193,9 @@ def run_gradient_analysis(
         )
 
     if save_dir is not None:
-        save_dir = Path(save_dir)
-        save_dir.mkdir(parents=True, exist_ok=True)
-        out_path = save_dir / f"{method_name}_per_tile_report.pkl"
-        with open(out_path, "wb") as f:
-            pickle.dump(method_report, f)
-        print(f"\nReport pickled to: {out_path}")
+        out_path = method_report.save(
+            Path(save_dir) / f"{method_name}_per_tile_report.json"
+        )
+        print(f"\nReport written to: {out_path}")
 
     return method_report

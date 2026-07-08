@@ -2,9 +2,9 @@
 """Multi-method per-tile-metric CLI.
 
 Loads 2-5 predictions, runs the per-tile two-sample test on each, and prints
-a per-method summary. The structured ``MultiMethodReport`` is pickled to
-``save_dir/per_tile_report.pkl`` so downstream notebooks can load it
-directly.
+a per-method summary. The structured ``MultiMethodReport`` is serialized as
+JSON to ``save_dir/per_tile_report.json`` so downstream notebooks can load it
+directly (via ``MultiMethodReport.load``).
 """
 
 from __future__ import annotations
@@ -84,7 +84,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--save_dir",
         required=True,
-        help="Directory to drop the pickled MultiMethodReport.",
+        help="Directory to drop the JSON MultiMethodReport.",
     )
 
     # TiledPatching geometry (per spatial axis, in image-pixel units).

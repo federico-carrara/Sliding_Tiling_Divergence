@@ -8,14 +8,66 @@ the per-image scalars across the test set.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Union
 
 import numpy as np
+from pydantic import BaseModel, ConfigDict, Field
+from typing_extensions import Self
 
 
-@dataclass
-class TileResult:
+class _ReportModel(BaseModel):
+    """Base for gradient-test report models with JSON persistence.
+
+    ``ser_json_inf_nan="constants"`` makes ``NaN`` scalars serialize to the
+    bare ``NaN`` token (readable by both pydantic and the stdlib ``json``
+    module) so skipped-tile sentinels round-trip losslessly; the default
+    ``"null"`` would emit ``null`` and then fail to reload into a ``float``
+    field. ``protected_namespaces=()`` silences warnings about the
+    ``method_name`` / ``model_*`` field-name overlap.
+    """
+
+    model_config = ConfigDict(
+        ser_json_inf_nan="constants",
+        protected_namespaces=(),
+    )
+
+    def save(self, path: Union[str, Path]) -> Path:
+        """Serialize to indented JSON at ``path`` (parents created).
+
+        Parameters
+        ----------
+        path : str or pathlib.Path
+            Destination file (a ``.json`` suffix is conventional).
+
+        Returns
+        -------
+        pathlib.Path
+            The path written to.
+        """
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(self.model_dump_json(indent=2))
+        return path
+
+    @classmethod
+    def load(cls, path: Union[str, Path]) -> Self:
+        """Load and validate an instance from a JSON file written by :meth:`save`.
+
+        Parameters
+        ----------
+        path : str or pathlib.Path
+            Source JSON file.
+
+        Returns
+        -------
+        Self
+            The validated model instance.
+        """
+        return cls.model_validate_json(Path(path).read_text())
+
+
+class TileResult(_ReportModel):
     """Outcome of the permutation test for one kept-region tile.
 
     Attributes
@@ -42,8 +94,7 @@ class TileResult:
     n_control_samples: int
 
 
-@dataclass
-class ChannelReport:
+class ChannelReport(_ReportModel):
     """Per-channel roll-up of tile-level scores for one image slice.
 
     This is the computational leaf: the per-tile test operates on a single
@@ -67,8 +118,7 @@ class ChannelReport:
     frac_rejected: float
 
 
-@dataclass
-class ImageReport:
+class ImageReport(_ReportModel):
     """Per-image container grouping its channels, plus pooled scalars.
 
     Attributes
@@ -86,13 +136,12 @@ class ImageReport:
     """
 
     image_id: str
-    channels: dict[int, ChannelReport] = field(default_factory=dict)
+    channels: dict[int, ChannelReport] = Field(default_factory=dict)
     median_T: float = float("nan")
     frac_rejected: float = float("nan")
 
 
-@dataclass
-class MethodReport:
+class MethodReport(_ReportModel):
     """Per-method roll-up across all images for that method.
 
     Attributes
@@ -113,9 +162,9 @@ class MethodReport:
 
     method_name: str
     dataset: Optional[str] = None
-    images: dict[str, ImageReport] = field(default_factory=dict)
-    mean_median_T: dict[int, float] = field(default_factory=dict)
-    mean_frac_rejected: dict[int, float] = field(default_factory=dict)
+    images: dict[str, ImageReport] = Field(default_factory=dict)
+    mean_median_T: dict[int, float] = Field(default_factory=dict)
+    mean_frac_rejected: dict[int, float] = Field(default_factory=dict)
 
     def to_records(self) -> list[dict]:
         """Flatten to one record per ``(image_id, channel)`` for tabular use.
@@ -146,8 +195,7 @@ class MethodReport:
         return records
 
 
-@dataclass
-class MultiMethodReport:
+class MultiMethodReport(_ReportModel):
     """Top-level result of a multi-method per-tile run.
 
     Attributes
@@ -158,7 +206,7 @@ class MultiMethodReport:
         Snapshot of the run configuration.
     """
 
-    methods: dict[str, MethodReport] = field(default_factory=dict)
+    methods: dict[str, MethodReport] = Field(default_factory=dict)
     config_summary: Optional[dict] = None
 
 
