@@ -12,7 +12,11 @@ from typing import Sequence
 import numpy as np
 from tqdm import tqdm
 
-from analysis_pipeline.gradient_test.aggregation import ImageReport, TileResult, aggregate_image
+from analysis_pipeline.gradient_test.aggregation import (
+    ChannelReport,
+    TileResult,
+    aggregate_channel,
+)
 from analysis_pipeline.gradient_test.gradient_analysis import compute_gradients
 from analysis_pipeline.gradient_test.permutation import permutation_pvalue
 from analysis_pipeline.gradient_test.sampling import sample_tile
@@ -61,7 +65,8 @@ def per_image_tile_scan(
     alpha: float,
     num_bins_per_tile: int,
     rng: np.random.Generator,
-) -> ImageReport:
+    channel: int = 0,
+) -> ChannelReport:
     """Run the per-tile test on one single-channel image slice.
 
     The caller is responsible for slicing the per-method ``(N, C, ...)``
@@ -89,11 +94,13 @@ def per_image_tile_scan(
         Histogram bin count for binned statistics (KL, JS).
     rng : numpy.random.Generator
         Random generator for the permutation engine.
+    channel : int, default=0
+        Channel index this slice was taken from; stamped onto the result.
 
     Returns
     -------
-    ImageReport
-        Per-tile results aggregated into image-level scalars.
+    ChannelReport
+        Per-tile results aggregated into channel-level scalars.
 
     Raises
     ------
@@ -161,4 +168,4 @@ def per_image_tile_scan(
             )
         )
 
-    return aggregate_image(tile_results, alpha)
+    return aggregate_channel(tile_results, alpha, channel)

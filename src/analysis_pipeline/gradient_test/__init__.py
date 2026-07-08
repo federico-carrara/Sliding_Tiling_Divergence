@@ -1,6 +1,7 @@
 """Core analysis modules."""
 
 from analysis_pipeline.gradient_test.aggregation import (
+    ChannelReport,
     ImageReport,
     MethodReport,
     MultiMethodReport,
@@ -23,6 +24,7 @@ from analysis_pipeline.gradient_test.plotting import (
 from analysis_pipeline.gradient_test.statistics import STATISTICS, StatisticSpec, get_statistic
 
 __all__ = [
+    "ChannelReport",
     "ImageReport",
     "MethodReport",
     "MultiMethodReport",

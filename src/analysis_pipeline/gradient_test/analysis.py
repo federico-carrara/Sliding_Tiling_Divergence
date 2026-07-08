@@ -10,11 +10,17 @@ from __future__ import annotations
 import pickle
 import warnings
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 import numpy as np
 
-from analysis_pipeline.gradient_test.aggregation import MethodReport, aggregate_method
+from analysis_pipeline.gradient_test.aggregation import (
+    ChannelReport,
+    ImageReport,
+    MethodReport,
+    aggregate_image,
+    aggregate_method,
+)
 from analysis_pipeline.gradient_test.per_tile import per_image_tile_scan
 from analysis_pipeline.gradient_test.statistics import StatisticName
 
@@ -23,10 +29,12 @@ def run_gradient_analysis(
     predictions: np.ndarray,
     tile_size: list[int],
     overlap: list[int],
-    channel: int,
     *,
+    channels: Optional[Sequence[int]] = None,
+    image_ids: Optional[Sequence[str]] = None,
+    dataset: Optional[str] = None,
     save_dir: Optional[Path] = None,
-    method_name: str = "method",
+    method_name: Optional[str] = None,
     statistic: StatisticName = "js",
     strip_width: int = 4,
     block_size: int = 3,
@@ -54,8 +62,16 @@ def run_gradient_analysis(
         Per-spatial-axis tile size.
     overlap : list of int
         Per-spatial-axis overlap.
-    channel : int
-        Channel index to analyse.
+    channels : sequence of int, optional
+        Channel indices to analyse. If ``None`` (default), every channel is
+        analysed. Each image's report then holds one ``ChannelReport`` per
+        requested channel.
+    image_ids : sequence of str, optional
+        Identifier for each image, one per ``N``; used as the keys of the
+        returned ``images`` dict. Defaults to ``"0" .. "N-1"``.
+    dataset : str, optional
+        Name of the dataset the predictions were drawn from; stamped onto the
+        report for downstream analysis.
     save_dir : pathlib.Path, optional
         Directory for the pickled report (created if missing); pass ``None``
         to skip writing. Default is ``None``.
@@ -106,10 +122,29 @@ def run_gradient_analysis(
             f"{method_name}: overlap has {len(overlap)} entries, "
             f"expected {n_spatial}"
         )
-    if not (0 <= channel < predictions.shape[1]):
+    n_channels = predictions.shape[1]
+    if channels is None:
+        channels = list(range(n_channels))
+    else:
+        channels = list(channels)
+        if not channels:
+            raise ValueError(
+                f"{method_name}: channels must be a non-empty sequence or None"
+            )
+        for c in channels:
+            if not (0 <= c < n_channels):
+                raise ValueError(
+                    f"{method_name}: channel={c} out of range for "
+                    f"C={n_channels}"
+                )
+
+    n_images = predictions.shape[0]
+    if image_ids is None:
+        image_ids = [str(n) for n in range(n_images)]
+    elif len(image_ids) != n_images:
         raise ValueError(
-            f"{method_name}: channel={channel} out of range for "
-            f"C={predictions.shape[1]}"
+            f"{method_name}: image_ids has {len(image_ids)} entries, "
+            f"expected {n_images} (one per image)"
         )
 
     if not is_2d and not pool_z_with_xy:
@@ -122,34 +157,41 @@ def run_gradient_analysis(
 
     rng = np.random.default_rng(random_seed)
 
-    print(f"  [{method_name}] {predictions.shape[0]} images × channel {channel}")
+    print(f"  [{method_name}] {n_images} images × channels {channels}")
 
-    image_reports = []
-    for n in range(predictions.shape[0]):
-        image = predictions[n, channel]
-        ir = per_image_tile_scan(
-            image,
-            tile_size=tile_size,
-            overlap=overlap,
-            strip_width=strip_width,
-            block_size=block_size,
-            n_permutations=n_permutations,
-            statistic=statistic,
-            alpha=alpha,
-            num_bins_per_tile=num_bins_per_tile,
-            rng=rng,
+    images: dict[str, ImageReport] = {}
+    for n, image_id in enumerate(image_ids):
+        channel_reports: dict[int, ChannelReport] = {}
+        for c in channels:
+            ch = per_image_tile_scan(
+                predictions[n, c],
+                tile_size=tile_size,
+                overlap=overlap,
+                strip_width=strip_width,
+                block_size=block_size,
+                n_permutations=n_permutations,
+                statistic=statistic,
+                alpha=alpha,
+                num_bins_per_tile=num_bins_per_tile,
+                rng=rng,
+                channel=c,
+            )
+            channel_reports[c] = ch
+        images[image_id] = aggregate_image(image_id, channel_reports, alpha)
+        summary = "  ".join(
+            f"c{c}: median_T={channel_reports[c].median_T:.4g} "
+            f"frac_rejected={channel_reports[c].frac_rejected:.3f}"
+            for c in channels
         )
-        image_reports.append(ir)
+        print(f"    image {image_id}: {summary}")
+
+    method_report = aggregate_method(images, method_name, dataset)
+    for c in channels:
         print(
-            f"    image {n}: median_T={ir.median_T:.4g} "
-            f"frac_rejected={ir.frac_rejected:.3f}"
+            f"  -> {method_name} [c{c}]: "
+            f"mean_median_T={method_report.mean_median_T[c]:.4g} "
+            f"mean_frac_rejected={method_report.mean_frac_rejected[c]:.3f}"
         )
-
-    method_report = aggregate_method(image_reports)
-    print(
-        f"  -> {method_name}: mean_median_T={method_report.mean_median_T:.4g} "
-        f"mean_frac_rejected={method_report.mean_frac_rejected:.3f}"
-    )
 
     if save_dir is not None:
         save_dir = Path(save_dir)
