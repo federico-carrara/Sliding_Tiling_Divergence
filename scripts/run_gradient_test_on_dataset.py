@@ -35,33 +35,10 @@ from analysis_pipeline.gradient_test.aggregation import MethodReport
 from analysis_pipeline.gradient_test.analysis import run_gradient_analysis_dataset
 
 
-def parse_comma_separated_ints(value: str) -> list[int]:
-    """Parse ``"64,64"`` into ``[64, 64]``."""
-    try:
-        return [int(v) for v in value.split(",")]
-    except ValueError as e:
-        raise argparse.ArgumentTypeError(
-            f"invalid comma-separated integers: {value!r} ({e})"
-        ) from e
-
-
-def parse_methods(value: str) -> dict[str, str]:
-    """Parse ``"SWITi:sw_inner_tiling,inner_tiling"`` into an ordered dict.
-
-    Each comma-separated item is ``display_name:subdir``; a bare ``subdir`` uses
-    the subdir as its own display name.
-    """
-    methods: dict[str, str] = {}
-    for item in value.split(","):
-        item = item.strip()
-        if not item:
-            continue
-        name, _, subdir = item.partition(":")
-        subdir = subdir or name
-        methods[name] = subdir
-    if not methods:
-        raise argparse.ArgumentTypeError(f"no methods parsed from {value!r}")
-    return methods
+METHODS_TO_SUBDIR = {
+    "inner_tiling": "inner_tiling",
+    "SWITi": "SWITi",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -91,9 +68,11 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--methods",
-        type=parse_methods,
-        default="inner_tiling,SWITi:sw_inner_tiling",
-        help="Comma-separated display_name:subdir pairs (or bare subdir).",
+        required=True,
+        type=str,
+        nargs="+",
+        choices=["inner_tiling", "SWITi"],
+        help="Space-separated list of method names.",
     )
     p.add_argument(
         "--no_gt",
@@ -106,14 +85,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--tile_size",
         required=True,
-        type=parse_comma_separated_ints,
-        help="TiledPatching tile size per spatial axis, e.g. 64,64.",
+        type=int,
+        nargs="+",
+        help="TiledPatching tile size per spatial axis.",
     )
     p.add_argument(
         "--overlap",
         required=True,
-        type=parse_comma_separated_ints,
-        help="TiledPatching overlap per spatial axis, e.g. 32,32.",
+        type=int,
+        nargs="+",
+        help="TiledPatching overlap per spatial axis.",
     )
     p.add_argument(
         "--statistic",
@@ -123,7 +104,8 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--channels",
-        type=parse_comma_separated_ints,
+        type=int,
+        nargs="+",
         default=None,
         help="Channel indices to test (default: all channels).",
     )
@@ -192,15 +174,20 @@ def main() -> None:
     pred_root = args.results_root / args.dataset / args.predictions_subdir
 
     # Image names shared across methods/GT (cheap: reads the archive directory).
-    first_subdir = next(iter(args.methods.values()))
+    first_subdir = METHODS_TO_SUBDIR[args.methods[0]]
     image_names = read_image_names(
         pred_root / first_subdir / "predictions.npz", args.max_images
     )
 
     # (method_name, lazy image iterator) sources, GT appended as a null reference.
     sources: list[tuple[str, Iterator[tuple[str, np.ndarray]]]] = [
-        (name, iter_prediction_images(pred_root / subdir / "predictions.npz", image_names))
-        for name, subdir in args.methods.items()
+        (
+            name, 
+            iter_prediction_images(
+                pred_root / METHODS_TO_SUBDIR[name] / "predictions.npz", image_names
+            )
+        )
+        for name  in args.methods
     ]
     if args.include_gt:
         target_dir = args.data_root / args.dataset / "targets" / "test"
