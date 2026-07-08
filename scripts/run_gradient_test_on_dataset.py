@@ -37,7 +37,7 @@ from analysis_pipeline.gradient_test.analysis import run_gradient_analysis_datas
 
 METHODS_TO_SUBDIR = {
     "inner_tiling": "inner_tiling",
-    "SWITi": "SWITi",
+    "SWITi": "sw_inner_tiling",
 }
 
 
@@ -63,7 +63,7 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--predictions_subdir",
-        default="predictions",
+        default="predictions_MMSE64",
         help="Predictions folder under the dataset (e.g. predictions_MMSE64).",
     )
     p.add_argument(
@@ -159,17 +159,27 @@ def iter_prediction_images(
             yield name, _ensure_chw(data[name])
 
 
+def _gt_filename(name: str) -> str:
+    """Map a prediction image name to its ground-truth filename.
+
+    The ``predictions.npz`` keys mirror the *input* image names (``input_img_*``),
+    while the ground truths are stored as ``target_img_*.tif``; translate the
+    ``input`` prefix to ``target`` so the two line up.
+    """
+    return f"{name.replace('input', 'target', 1)}.tif"
+
+
 def iter_gt_images(
     target_dir: Path, image_names: list[str]
 ) -> Iterator[tuple[str, np.ndarray]]:
     """Lazily yield ``(name, (C, H, W))`` ground truths, one file at a time."""
     for name in image_names:
-        yield name, _ensure_chw(tiff.imread(target_dir / f"{name}.tif"))
+        yield name, _ensure_chw(tiff.imread(target_dir / _gt_filename(name)))
 
 
 def main() -> None:
     args = parse_args()
-    out_dir = args.output_root / args.dataset
+    out_dir = args.output_root
     out_dir.mkdir(parents=True, exist_ok=True)
     pred_root = args.results_root / args.dataset / args.predictions_subdir
 
