@@ -9,7 +9,6 @@ names, save_dir, tile_size, overlap, ...)`` argument order.
 
 from __future__ import annotations
 
-import pickle
 from pathlib import Path
 from typing import Optional
 
@@ -84,8 +83,8 @@ def run_gradient_analysis_multi(
     spatial axis and must match the TiledPatching configuration used to
     produce the predictions.
 
-    If ``save_dir`` is not None, the report is pickled to
-    ``save_dir / per_tile_report.pkl``. No other files are written.
+    If ``save_dir`` is not None, the report is serialized as JSON to
+    ``save_dir / per_tile_report.json``. No other files are written.
 
     Parameters
     ----------
@@ -94,7 +93,7 @@ def run_gradient_analysis_multi(
     method_names : list of str
         Method names matching ``predictions_list`` one-to-one.
     save_dir : pathlib.Path, optional
-        Directory for the pickled report (created if missing); pass ``None``
+        Directory for the JSON report (created if missing); pass ``None``
         to skip writing.
     tile_size : list
         Either a single per-axis spec, or a per-method list of per-axis specs.
@@ -179,11 +178,8 @@ def run_gradient_analysis_multi(
     _print_summary(report, method_names, statistic)
 
     if save_dir is not None:
-        save_dir = Path(save_dir)
-        save_dir.mkdir(parents=True, exist_ok=True)
-        with open(save_dir / "per_tile_report.pkl", "wb") as f:
-            pickle.dump(report, f)
-        print(f"\nReport pickled to: {save_dir / 'per_tile_report.pkl'}")
+        out_path = report.save(Path(save_dir) / "per_tile_report.json")
+        print(f"\nReport written to: {out_path}")
 
     return report
 

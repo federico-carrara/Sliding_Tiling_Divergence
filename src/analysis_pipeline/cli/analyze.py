@@ -2,8 +2,8 @@
 """Single-method per-tile-metric CLI.
 
 Loads one prediction file, runs the per-tile two-sample test on its image
-set, and pickles the resulting ``MethodReport`` to
-``save_dir/<method_name>_per_tile_report.pkl``.
+set, and serializes the resulting ``MethodReport`` as JSON to
+``save_dir/<method_name>_per_tile_report.json``.
 """
 
 from __future__ import annotations
@@ -78,12 +78,12 @@ def parse_args() -> argparse.Namespace:
         "--method_name",
         required=True,
         type=str,
-        help="Display name for the method (used in logs and the pickle filename).",
+        help="Display name for the method (used in logs and the report filename).",
     )
     parser.add_argument(
         "--save_dir",
         required=True,
-        help="Directory to drop the pickled MethodReport.",
+        help="Directory to drop the JSON MethodReport.",
     )
 
     # TiledPatching geometry (per spatial axis, in image-pixel units).

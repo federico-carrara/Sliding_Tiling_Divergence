@@ -1,12 +1,16 @@
 """Core analysis modules."""
 
 from analysis_pipeline.gradient_test.aggregation import (
+    ChannelReport,
     ImageReport,
     MethodReport,
     MultiMethodReport,
     TileResult,
 )
-from analysis_pipeline.gradient_test.analysis import run_gradient_analysis
+from analysis_pipeline.gradient_test.analysis import (
+    run_gradient_analysis,
+    run_gradient_analysis_dataset,
+)
 from analysis_pipeline.gradient_test.comparison import run_gradient_analysis_multi
 from analysis_pipeline.gradient_test.gradient_analysis import (
     compute_gradients,
@@ -23,13 +27,13 @@ from analysis_pipeline.gradient_test.plotting import (
 from analysis_pipeline.gradient_test.statistics import STATISTICS, StatisticSpec, get_statistic
 
 __all__ = [
+    "ChannelReport",
     "ImageReport",
     "MethodReport",
     "MultiMethodReport",
     "STATISTICS",
     "StatisticSpec",
     "TileResult",
-    "build_tile_pvalue_map",
     "compute_gradients",
     "compute_gradients_2d",
     "compute_gradients_3d",
@@ -40,5 +44,6 @@ __all__ = [
     "plot_significance_overlay",
     "plot_significance_overlay_grid",
     "run_gradient_analysis",
+    "run_gradient_analysis_dataset",
     "run_gradient_analysis_multi",
 ]

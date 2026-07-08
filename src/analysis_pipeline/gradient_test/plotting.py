@@ -18,8 +18,10 @@ import numpy as np
 from numpy.typing import NDArray
 
 from analysis_pipeline.gradient_test.aggregation import (
+    ChannelReport,
     ImageReport,
     MethodReport,
+    TileResult,
 )
 from analysis_pipeline.gradient_test.seams import compute_seam_positions
 from analysis_pipeline.gradient_test.tiles import enumerate_tiles
@@ -234,7 +236,7 @@ def plot_gradient_comparison(
 
 
 def _build_tile_pvalue_map(
-    image_report: ImageReport,
+    channel_report: ChannelReport,
     image_shape: Sequence[int],
     tile_size: Sequence[int],
     overlap: Sequence[int],
@@ -250,8 +252,8 @@ def _build_tile_pvalue_map(
 
     Parameters
     ----------
-    image_report : ImageReport
-        Per-image report whose ``tiles`` carry ``coord`` and ``p``.
+    channel_report : ChannelReport
+        Per-(image, channel) report whose ``tiles`` carry ``coord`` and ``p``.
     image_shape : Sequence[int]
         Spatial shape of the image, ``(H, W)`` in 2D or ``(D, H, W)`` in 3D —
         the same shape that was analysed (no batch / channel axes).
@@ -269,7 +271,7 @@ def _build_tile_pvalue_map(
     tiles = enumerate_tiles(image_shape, tile_size, overlap)
     ranges_by_coord = {t.coord: t.ranges for t in tiles}
     pmap = np.full(tuple(image_shape), np.nan, dtype=np.float64)
-    for tr in image_report.tiles:
+    for tr in channel_report.tiles:
         ranges = ranges_by_coord.get(tr.coord)
         if ranges is None:
             continue
@@ -442,6 +444,7 @@ def plot_significance_overlay(
     image_report: ImageReport,
     image: NDArray,
     *,
+    channel: int,
     tile_size: Sequence[int],
     overlap: Sequence[int],
     alpha: float = 0.05,
@@ -473,10 +476,13 @@ def plot_significance_overlay(
     Parameters
     ----------
     image_report : ImageReport
-        Per-image report, e.g. ``method_report.images[n]``.
+        Per-image report, e.g. ``method_report.images[image_id]``.
     image : NDArray
         The matching single-channel image slice — ``(H, W)`` in 2D or
         ``(D, H, W)`` in 3D — i.e. ``predictions[n, channel]``.
+    channel : int
+        Which channel of ``image_report`` to overlay (indexes
+        ``image_report.channels``).
     tile_size, overlap : Sequence[int]
         TiledPatching tile size / overlap per spatial axis (same as the analysis
         run).
@@ -522,7 +528,9 @@ def plot_significance_overlay(
         The figure handle.
     """
     image = np.asarray(image)
-    pmap = _build_tile_pvalue_map(image_report, image.shape, tile_size, overlap)
+    pmap = _build_tile_pvalue_map(
+        image_report.channels[channel], image.shape, tile_size, overlap
+    )
     img2d, pmap2d = _select_2d(image, pmap, z_idx)
     full_hw = (img2d.shape[0], img2d.shape[1])
 
@@ -599,9 +607,58 @@ def plot_significance_overlay(
     return fig
 
 
+def _collect_tiles(
+    report: Union[ChannelReport, ImageReport, MethodReport],
+    channel: Optional[int],
+) -> list[TileResult]:
+    """Gather the per-tile results from any report level, optionally filtered.
+
+    Parameters
+    ----------
+    report : ChannelReport, ImageReport or MethodReport
+        Source of per-tile results. Channels are descended into for image- and
+        method-level reports.
+    channel : Optional[int]
+        If given, keep only the tiles of that channel index; if ``None``, pool
+        every channel. Ignored for a :class:`ChannelReport` (already one
+        channel).
+
+    Returns
+    -------
+    list of TileResult
+        Pooled tiles.
+
+    Raises
+    ------
+    TypeError
+        If ``report`` is not one of the three report types.
+    """
+    def channels_of(image: ImageReport) -> list[ChannelReport]:
+        if channel is None:
+            return list(image.channels.values())
+        return [image.channels[channel]]
+
+    if isinstance(report, ChannelReport):
+        return list(report.tiles)
+    if isinstance(report, ImageReport):
+        return [t for ch in channels_of(report) for t in ch.tiles]
+    if isinstance(report, MethodReport):
+        return [
+            t
+            for image in report.images.values()
+            for ch in channels_of(image)
+            for t in ch.tiles
+        ]
+    raise TypeError(
+        "`report` must be a ChannelReport, ImageReport or MethodReport; "
+        f"got {type(report).__name__}."
+    )
+
+
 def plot_pvalue_distribution(
-    report: Union[ImageReport, MethodReport],
+    report: Union[ChannelReport, ImageReport, MethodReport],
     *,
+    channel: Optional[int] = None,
     alpha: float = 0.05,
     bins: int = 20,
     title: Optional[str] = None,
@@ -613,9 +670,12 @@ def plot_pvalue_distribution(
 
     Parameters
     ----------
-    report : ImageReport or MethodReport
-        Source of per-tile p-values. For a :class:`MethodReport` the p-values
-        are pooled across all images.
+    report : ChannelReport, ImageReport or MethodReport
+        Source of per-tile p-values. For an :class:`ImageReport` or
+        :class:`MethodReport` the p-values are pooled across images/channels.
+    channel : Optional[int]
+        Restrict pooling to this channel index. If ``None`` (default), every
+        channel is pooled. Ignored for a :class:`ChannelReport`.
     alpha : float
         Rejection threshold, drawn as a vertical line and used for the reported
         rejected fraction. Default ``0.05``.
@@ -638,18 +698,10 @@ def plot_pvalue_distribution(
     Raises
     ------
     TypeError
-        If ``report`` is neither an :class:`ImageReport` nor a
+        If ``report`` is not a :class:`ChannelReport`, :class:`ImageReport` or
         :class:`MethodReport`.
     """
-    if isinstance(report, MethodReport):
-        tiles = [t for ir in report.images for t in ir.tiles]
-    elif isinstance(report, ImageReport):
-        tiles = report.tiles
-    else:
-        raise TypeError(
-            "`report` must be an ImageReport or MethodReport; "
-            f"got {type(report).__name__}."
-        )
+    tiles = _collect_tiles(report, channel)
 
     pvals = np.array(
         [t.p for t in tiles if not np.isnan(t.p)], dtype=np.float64
@@ -748,6 +800,7 @@ def plot_flatness_stratified_rejection(
     reports: Mapping[str, ImageReport],
     texture_image: NDArray,
     *,
+    channel: int,
     tile_size: Sequence[int],
     overlap: Sequence[int],
     alpha: float = 0.05,
@@ -785,6 +838,8 @@ def plot_flatness_stratified_rejection(
         Per-image reports keyed by method name (all over the same geometry as
         ``texture_image``). Typically ``{"GT": ..., "SWITi": ..., "Inner
         Tiling": ...}``.
+    channel : int
+        Which channel of each report to stratify (indexes ``ImageReport.channels``).
     texture_image : NDArray
         2-D ``(H, W)`` image defining the shared per-tile texture axis.
     tile_size, overlap : Sequence[int]
@@ -837,7 +892,7 @@ def plot_flatness_stratified_rejection(
     # hence identical across methods; gather it from the union to be safe.
     valid_coords: set[tuple[int, ...]] = set()
     for ir in reports.values():
-        for tr in ir.tiles:
+        for tr in ir.channels[channel].tiles:
             if not np.isnan(tr.p):
                 valid_coords.add(tr.coord)
     coords = sorted(
@@ -893,7 +948,7 @@ def plot_flatness_stratified_rejection(
     for mi, (name, ir) in enumerate(reports.items()):
         reject_by_coord = {
             tr.coord: (tr.p < alpha)
-            for tr in ir.tiles
+            for tr in ir.channels[channel].tiles
             if not np.isnan(tr.p)
         }
         rej = np.array(
@@ -1028,8 +1083,7 @@ def plot_significance_overlay_grid(
         If ``method_report`` has no images.
     """
     predictions = np.asarray(predictions)
-    reports = method_report.images
-    n_images = len(reports)
+    n_images = len(method_report.images)
     if n_images == 0:
         raise ValueError("`method_report` has no images to plot.")
 
@@ -1037,18 +1091,25 @@ def plot_significance_overlay_grid(
     x_slice = _as_slice(x_ROI)
     origin = (_slice_start(y_slice), _slice_start(x_slice))
 
-    # build aligned (image, pmap) pairs up front so contrast can be shared
-    items: list[tuple[NDArray, NDArray, tuple[int, int]]] = []
-    for n, ir in enumerate(reports):
+    # build aligned (image, pmap) pairs up front so contrast can be shared.
+    # ``images`` is a dict keyed by image_id, filled in prediction-row order by
+    # run_gradient_analysis, so enumerate() index n aligns with predictions[n].
+    items: list[tuple[NDArray, NDArray, tuple[int, int], str, float]] = []
+    for n, ir in enumerate(method_report.images.values()):
+        channel_report = ir.channels[channel]
         image = np.asarray(predictions[n, channel])
-        pmap = _build_tile_pvalue_map(ir, image.shape, tile_size, overlap)
+        pmap = _build_tile_pvalue_map(
+            channel_report, image.shape, tile_size, overlap
+        )
         img2d, pmap2d = _select_2d(image, pmap, z_idx)
         full_hw = (img2d.shape[0], img2d.shape[1])
         img2d = _crop(img2d, y_slice, x_slice)
         pmap2d = _crop(pmap2d, y_slice, x_slice)
-        items.append((img2d, pmap2d, full_hw))
+        items.append(
+            (img2d, pmap2d, full_hw, ir.image_id, channel_report.frac_rejected)
+        )
 
-    vlims = _score_vlims([p for _, p, _ in items], alpha)
+    vlims = _score_vlims([p for _, p, *_ in items], alpha)
     text_color = "white" if facecolor == "black" else "black"
 
     nrows = math.ceil(n_images / ncols)
@@ -1069,7 +1130,7 @@ def plot_significance_overlay_grid(
         if idx >= n_images:
             ax.axis("off")
             continue
-        img2d, pmap2d, full_hw = items[idx]
+        img2d, pmap2d, full_hw, image_id, frac_rejected = items[idx]
         mappable = _draw_overlay_on_ax(
             ax,
             img2d,
@@ -1086,7 +1147,7 @@ def plot_significance_overlay_grid(
             origin=origin,
         )
         ax.set_title(
-            f"image {idx} — rej {reports[idx].frac_rejected:.2f}",
+            f"image {image_id} — rej {frac_rejected:.2f}",
             fontsize=11,
             color=text_color,
         )
