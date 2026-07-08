@@ -2,9 +2,9 @@
 """Multi-method FRC-metric CLI.
 
 Loads 2-5 (prediction, ground-truth) pairs, computes a per-image FRC curve
-for each, aggregates per-frequency mean + 95% CI per method, and pickles
-the report to ``save_dir/frc_report.pkl``. A headline plot is written to
-``save_dir/frc_curves.png``.
+for each, aggregates per-frequency mean + 95% CI per method, and serializes
+the report as JSON to ``save_dir/frc_report.json``. A headline plot is written
+to ``save_dir/frc_curves.png``.
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--save_dir",
         required=True,
-        help="Directory for the pickled FRCMultiMethodReport and headline plot.",
+        help="Directory for the JSON FRCMultiMethodReport and headline plot.",
     )
 
     parser.add_argument(

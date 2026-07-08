@@ -2,8 +2,8 @@
 """Single-method FRC-metric CLI.
 
 Loads one (prediction, ground-truth) pair, computes a per-image FRC curve
-for each image, aggregates per-frequency mean + 95% CI, and pickles the
-report to ``save_dir/<method_name>_frc_report.pkl``.
+for each image, aggregates per-frequency mean + 95% CI, and serializes the
+report as JSON to ``save_dir/<method_name>_frc_report.json``.
 """
 
 from __future__ import annotations
@@ -56,12 +56,12 @@ def parse_args() -> argparse.Namespace:
         "--method_name",
         required=True,
         type=str,
-        help="Display name for the method (used in logs and the pickle filename).",
+        help="Display name for the method (used in logs and the report filename).",
     )
     parser.add_argument(
         "--save_dir",
         required=True,
-        help="Directory for the pickled FRCMethodReport.",
+        help="Directory for the JSON FRCMethodReport.",
     )
 
     parser.add_argument(

@@ -10,14 +10,92 @@ in plots when FRC stays well away from ±1.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Optional
+from pathlib import Path
+from typing import Annotated, Any, Optional, Union
 
 import numpy as np
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    PlainSerializer,
+)
+from typing_extensions import Self
 
 
-@dataclass
-class FRCChannelResult:
+def _to_ndarray(value: Any) -> np.ndarray:
+    """Coerce a value (e.g. a JSON list) to a float64 array on load."""
+    if isinstance(value, np.ndarray):
+        return value.astype(np.float64, copy=False)
+    return np.asarray(value, dtype=np.float64)
+
+
+NdArray = Annotated[
+    np.ndarray,
+    BeforeValidator(_to_ndarray),
+    PlainSerializer(lambda a: a.tolist(), return_type=list),
+]
+"""A 1-D float64 numpy array that serializes to a JSON list and back.
+
+``NaN`` entries survive the round-trip because the base model sets
+``ser_json_inf_nan="constants"`` (they are written as the bare ``NaN`` token).
+"""
+
+
+class _FRCReportModel(BaseModel):
+    """Base for FRC report models with JSON persistence.
+
+    ``arbitrary_types_allowed`` lets the models carry :class:`numpy.ndarray`
+    fields (serialized via :data:`NdArray`); ``ser_json_inf_nan="constants"``
+    keeps ``NaN`` values in curves and scalars round-tripping losslessly (the
+    default ``"null"`` would emit ``null`` and then fail to reload into a
+    ``float``/array field); ``protected_namespaces=()`` silences warnings about
+    the ``method_name`` field.
+    """
+
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        ser_json_inf_nan="constants",
+        protected_namespaces=(),
+    )
+
+    def save(self, path: Union[str, Path]) -> Path:
+        """Serialize to indented JSON at ``path`` (parents created).
+
+        Parameters
+        ----------
+        path : str or pathlib.Path
+            Destination file (a ``.json`` suffix is conventional).
+
+        Returns
+        -------
+        pathlib.Path
+            The path written to.
+        """
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(self.model_dump_json(indent=2))
+        return path
+
+    @classmethod
+    def load(cls, path: Union[str, Path]) -> Self:
+        """Load and validate an instance from a JSON file written by :meth:`save`.
+
+        Parameters
+        ----------
+        path : str or pathlib.Path
+            Source JSON file.
+
+        Returns
+        -------
+        Self
+            The validated model instance.
+        """
+        return cls.model_validate_json(Path(path).read_text())
+
+
+class FRCChannelResult(_FRCReportModel):
     """Per-channel FRC curve for one image slice — the computational leaf.
 
     Attributes
@@ -35,13 +113,12 @@ class FRCChannelResult:
     """
 
     channel: int
-    freqs: np.ndarray
-    frc: np.ndarray
+    freqs: NdArray
+    frc: NdArray
     image_shape: tuple[int, int]
 
 
-@dataclass
-class FRCImageReport:
+class FRCImageReport(_FRCReportModel):
     """Per-image container grouping its channels, plus a pooled mean curve.
 
     Attributes
@@ -58,13 +135,12 @@ class FRCImageReport:
     """
 
     image_id: str
-    channels: dict[int, FRCChannelResult] = field(default_factory=dict)
-    freqs: np.ndarray = field(default_factory=lambda: np.array([], dtype=np.float64))
-    mean_frc: np.ndarray = field(default_factory=lambda: np.array([], dtype=np.float64))
+    channels: dict[int, FRCChannelResult] = Field(default_factory=dict)
+    freqs: NdArray = Field(default_factory=lambda: np.array([], dtype=np.float64))
+    mean_frc: NdArray = Field(default_factory=lambda: np.array([], dtype=np.float64))
 
 
-@dataclass
-class FRCMethodReport:
+class FRCMethodReport(_FRCReportModel):
     """Per-method roll-up of FRC curves across all images for that method.
 
     Attributes
@@ -90,11 +166,11 @@ class FRCMethodReport:
 
     method_name: str = "method"
     dataset: Optional[str] = None
-    images: dict[str, FRCImageReport] = field(default_factory=dict)
-    freqs: np.ndarray = field(default_factory=lambda: np.array([], dtype=np.float64))
-    mean_frc: dict[int, np.ndarray] = field(default_factory=dict)
-    ci95_lo: dict[int, np.ndarray] = field(default_factory=dict)
-    ci95_hi: dict[int, np.ndarray] = field(default_factory=dict)
+    images: dict[str, FRCImageReport] = Field(default_factory=dict)
+    freqs: NdArray = Field(default_factory=lambda: np.array([], dtype=np.float64))
+    mean_frc: dict[int, NdArray] = Field(default_factory=dict)
+    ci95_lo: dict[int, NdArray] = Field(default_factory=dict)
+    ci95_hi: dict[int, NdArray] = Field(default_factory=dict)
     n_images: int = 0
 
     def to_records(self) -> list[dict]:
@@ -132,8 +208,7 @@ class FRCMethodReport:
         return records
 
 
-@dataclass
-class FRCMultiMethodReport:
+class FRCMultiMethodReport(_FRCReportModel):
     """Top-level result of a multi-method FRC run.
 
     Attributes
@@ -144,7 +219,7 @@ class FRCMultiMethodReport:
         Snapshot of the run configuration.
     """
 
-    methods: dict[str, FRCMethodReport] = field(default_factory=dict)
+    methods: dict[str, FRCMethodReport] = Field(default_factory=dict)
     config_summary: Optional[dict] = None
 
 

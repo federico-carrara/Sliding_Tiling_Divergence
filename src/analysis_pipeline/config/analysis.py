@@ -72,7 +72,7 @@ class FRCAnalysisConfig(BaseModel):
     dataset : str
         Dataset name.
     save_dir : pathlib.Path
-        Directory where the pickled ``FRCMultiMethodReport`` is written.
+        Directory where the JSON ``FRCMultiMethodReport`` is written.
     predictions : list of str
         Prediction file paths (one per method).
     ground_truths : list of str

@@ -8,7 +8,6 @@ single-method orchestrator remains the primary API. Mirrors the shape of
 
 from __future__ import annotations
 
-import pickle
 from pathlib import Path
 from typing import Optional
 
@@ -33,8 +32,8 @@ def run_frc_analysis_multi(
     per-method ``ground_truths_list[i]`` must have the same ``(N, H, W)``
     layout as ``predictions_list[i]`` so each prediction has a matching GT.
 
-    If ``save_dir`` is not None, the report is pickled to
-    ``save_dir / frc_report.pkl``.
+    If ``save_dir`` is not None, the report is serialized as JSON to
+    ``save_dir / frc_report.json``.
 
     Parameters
     ----------
@@ -46,7 +45,7 @@ def run_frc_analysis_multi(
     method_names : list of str
         Method names matching ``predictions_list`` one-to-one.
     save_dir : pathlib.Path, optional
-        Directory for the pickled report (created if missing); pass ``None``
+        Directory for the JSON report (created if missing); pass ``None``
         to skip writing.
     channel : int, default=0
         Channel index to analyse.
@@ -100,11 +99,8 @@ def run_frc_analysis_multi(
     _print_summary(report, method_names)
 
     if save_dir is not None:
-        save_dir = Path(save_dir)
-        save_dir.mkdir(parents=True, exist_ok=True)
-        with open(save_dir / "frc_report.pkl", "wb") as f:
-            pickle.dump(report, f)
-        print(f"\nReport pickled to: {save_dir / 'frc_report.pkl'}")
+        out_path = report.save(Path(save_dir) / "frc_report.json")
+        print(f"\nReport written to: {out_path}")
 
     return report
 

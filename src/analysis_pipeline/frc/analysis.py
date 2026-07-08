@@ -8,7 +8,6 @@ of ``(prediction, ground_truth)`` pairs. Multi-method comparison lives in
 
 from __future__ import annotations
 
-import pickle
 from pathlib import Path
 from typing import Optional, Sequence
 
@@ -40,8 +39,8 @@ def run_frc_analysis(
     Both arrays are channel-first ``(N, C, H, W)`` with matching ``(N, H, W)``
     layout so each prediction has a corresponding ground truth.
 
-    If ``save_dir`` is not None, the report is pickled to
-    ``save_dir / f"{method_name}_frc_report.pkl"``.
+    If ``save_dir`` is not None, the report is serialized as JSON to
+    ``save_dir / f"{method_name}_frc_report.json"``.
 
     Parameters
     ----------
@@ -50,10 +49,10 @@ def run_frc_analysis(
     ground_truths : np.ndarray
         Channel-first ground-truth array, same ``(N, H, W)`` as ``predictions``.
     save_dir : pathlib.Path, optional
-        Directory for the pickled report (created if missing); pass ``None``
+        Directory for the JSON report (created if missing); pass ``None``
         to skip writing.
     method_name : str, default="method"
-        Display name used in logs and the pickle filename.
+        Display name used in logs and the report filename.
     channels : sequence of int, optional
         Channel indices to analyse. If ``None`` (default), every channel is
         analysed. Each image's report then holds one ``FRCChannelResult`` per
@@ -149,11 +148,9 @@ def run_frc_analysis(
         )
 
     if save_dir is not None:
-        save_dir = Path(save_dir)
-        save_dir.mkdir(parents=True, exist_ok=True)
-        out_path = save_dir / f"{method_name}_frc_report.pkl"
-        with open(out_path, "wb") as f:
-            pickle.dump(method_report, f)
-        print(f"\nReport pickled to: {out_path}")
+        out_path = method_report.save(
+            Path(save_dir) / f"{method_name}_frc_report.json"
+        )
+        print(f"\nReport written to: {out_path}")
 
     return method_report
