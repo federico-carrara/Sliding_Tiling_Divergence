@@ -41,12 +41,10 @@ Thumbs.db
 *.pkl
 *.tiff
 *.tif
-*.ipynb
 test.ipynb
 results/
 experiment_analysis_results*/
 *.log
-uv.lock
 environment.yaml
 
 # Development
