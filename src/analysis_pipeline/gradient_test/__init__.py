@@ -31,7 +31,6 @@ __all__ = [
     "STATISTICS",
     "StatisticSpec",
     "TileResult",
-    "build_tile_pvalue_map",
     "compute_gradients",
     "compute_gradients_2d",
     "compute_gradients_3d",

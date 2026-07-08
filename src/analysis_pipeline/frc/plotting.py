@@ -21,6 +21,8 @@ def plot_frc_curves(
     report: FRCMultiMethodReport,
     tile_inner_sizes: Optional[dict[str, Optional[int]]] = None,
     save_path: Optional[Path] = None,
+    *,
+    channel: int = 0,
 ) -> "plt.Figure":
     """Plot mean FRC curves with 95% CI bands for every method.
 
@@ -36,6 +38,9 @@ def plot_frc_curves(
         with ``None`` (e.g. SWiTi) skip the verticals.
     save_path : pathlib.Path, optional
         If provided, save the figure to this path (PNG suggested) at 150 dpi.
+    channel : int, default=0
+        Channel index whose per-channel mean curve and CI band to plot. Methods
+        lacking this channel are skipped.
 
     Returns
     -------
@@ -49,20 +54,20 @@ def plot_frc_curves(
 
     for i, name in enumerate(methods):
         m = report.methods[name]
-        if m.n_images == 0:
+        if m.n_images == 0 or channel not in m.mean_frc:
             continue
         colour = palette[i % len(palette)]
         ax.plot(
             m.freqs,
-            m.mean_frc,
+            m.mean_frc[channel],
             color=colour,
             linewidth=1.8,
             label=f"{name} (N={m.n_images})",
         )
         ax.fill_between(
             m.freqs,
-            m.ci95_lo,
-            m.ci95_hi,
+            m.ci95_lo[channel],
+            m.ci95_hi[channel],
             color=colour,
             alpha=0.20,
             linewidth=0,
@@ -71,9 +76,10 @@ def plot_frc_curves(
         if tile_inner_sizes is None:
             continue
         s = tile_inner_sizes.get(name)
-        if s is None or m.images == []:
+        if s is None or not m.images:
             continue
-        h, w = m.images[0].image_shape
+        first_image = next(iter(m.images.values()))
+        h, w = first_image.channels[channel].image_shape
         n_pix = min(h, w)
         k_max = n_pix // (2 * s)
         for k in range(1, k_max + 1):

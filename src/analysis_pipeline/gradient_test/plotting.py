@@ -1109,7 +1109,7 @@ def plot_significance_overlay_grid(
             (img2d, pmap2d, full_hw, ir.image_id, channel_report.frac_rejected)
         )
 
-    vlims = _score_vlims([p for _, p, _ in items], alpha)
+    vlims = _score_vlims([p for _, p, *_ in items], alpha)
     text_color = "white" if facecolor == "black" else "black"
 
     nrows = math.ceil(n_images / ncols)
