@@ -159,6 +159,7 @@ def run_gradient_analysis(
     if verbose:
         summary = "  ".join(
             f"c{c}: median_T={channel_reports[c].median_T:.4g} "
+            f"median_Z={channel_reports[c].median_Z:.3g} "
             f"frac_rejected={channel_reports[c].frac_rejected:.3f}"
             for c in channels
         )
@@ -254,6 +255,7 @@ def run_gradient_analysis_dataset(
             print(
                 f"  -> {method_name} [c{c}]: "
                 f"mean_median_T={method_report.mean_median_T[c]:.4g} "
+                f"mean_median_Z={method_report.mean_median_Z[c]:.3g} "
                 f"mean_frac_rejected={method_report.mean_frac_rejected[c]:.3f}"
             )
 

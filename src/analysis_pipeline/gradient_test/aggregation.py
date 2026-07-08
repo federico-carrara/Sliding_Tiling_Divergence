@@ -80,6 +80,15 @@ class TileResult(_ReportModel):
         Observed statistic value (``nan`` for skipped tiles).
     p : float
         Phipson–Smyth p-value (``nan`` for skipped tiles).
+    null_mean : float
+        Mean of the tile's permutation null (``nan`` for skipped tiles).
+    null_std : float
+        Standard deviation of the tile's permutation null (``nan`` for skipped
+        tiles).
+    Z_obs : float
+        Calibrated Z-score ``(T_obs - null_mean) / null_std`` expressing the
+        observed statistic in units of the tile's own null spread, making it
+        comparable across tiles and images (``nan`` for skipped tiles).
     n_seam_samples : int
         Total number of seam samples used in the test.
     n_control_samples : int
@@ -90,6 +99,9 @@ class TileResult(_ReportModel):
     n_seams: int
     T_obs: float
     p: float
+    null_mean: float = float("nan")
+    null_std: float = float("nan")
+    Z_obs: float = float("nan")
     n_seam_samples: int
     n_control_samples: int
 
@@ -110,12 +122,23 @@ class ChannelReport(_ReportModel):
         Median of valid ``T_obs`` across tiles (``nan`` if none are valid).
     frac_rejected : float
         Fraction of valid tiles with ``p < alpha`` (``nan`` if none are valid).
+    mean_Z : float
+        Mean calibrated Z-score over valid tiles (``nan`` if none are valid).
+    median_Z : float
+        Median calibrated Z-score over valid tiles (``nan`` if none are valid).
+    p90_Z : float
+        90th-percentile calibrated Z-score over valid tiles — a worst-case
+        summary, since artifacts are often driven by a few bad seams (``nan`` if
+        none are valid).
     """
 
     channel: int
     tiles: list[TileResult]
     median_T: float
     frac_rejected: float
+    mean_Z: float = float("nan")
+    median_Z: float = float("nan")
+    p90_Z: float = float("nan")
 
 
 class ImageReport(_ReportModel):
@@ -133,12 +156,24 @@ class ImageReport(_ReportModel):
     frac_rejected : float
         Fraction of valid tiles with ``p < alpha`` pooled across all channels'
         tiles (``nan`` if none are valid).
+    mean_Z : float
+        Mean calibrated Z-score over valid tiles pooled across all channels
+        (``nan`` if none are valid).
+    median_Z : float
+        Median calibrated Z-score over valid pooled tiles (``nan`` if none are
+        valid).
+    p90_Z : float
+        90th-percentile calibrated Z-score over valid pooled tiles (``nan`` if
+        none are valid).
     """
 
     image_id: str
     channels: dict[int, ChannelReport] = Field(default_factory=dict)
     median_T: float = float("nan")
     frac_rejected: float = float("nan")
+    mean_Z: float = float("nan")
+    median_Z: float = float("nan")
+    p90_Z: float = float("nan")
 
 
 class MethodReport(_ReportModel):
@@ -158,6 +193,15 @@ class MethodReport(_ReportModel):
     mean_frac_rejected : dict of int to float
         Per-channel mean of valid per-image ``frac_rejected`` values, keyed by
         channel index.
+    mean_mean_Z : dict of int to float
+        Per-channel mean of valid per-image ``mean_Z`` values, keyed by channel
+        index.
+    mean_median_Z : dict of int to float
+        Per-channel mean of valid per-image ``median_Z`` values, keyed by channel
+        index.
+    mean_p90_Z : dict of int to float
+        Per-channel mean of valid per-image ``p90_Z`` values, keyed by channel
+        index.
     """
 
     method_name: str
@@ -165,6 +209,9 @@ class MethodReport(_ReportModel):
     images: dict[str, ImageReport] = Field(default_factory=dict)
     mean_median_T: dict[int, float] = Field(default_factory=dict)
     mean_frac_rejected: dict[int, float] = Field(default_factory=dict)
+    mean_mean_Z: dict[int, float] = Field(default_factory=dict)
+    mean_median_Z: dict[int, float] = Field(default_factory=dict)
+    mean_p90_Z: dict[int, float] = Field(default_factory=dict)
 
     def to_records(self) -> list[dict]:
         """Flatten to one record per ``(image_id, channel)`` for tabular use.
@@ -188,6 +235,9 @@ class MethodReport(_ReportModel):
                         "channel": channel,
                         "median_T": ch.median_T,
                         "frac_rejected": ch.frac_rejected,
+                        "mean_Z": ch.mean_Z,
+                        "median_Z": ch.median_Z,
+                        "p90_Z": ch.p90_Z,
                         "n_tiles": len(ch.tiles),
                         "n_valid_tiles": n_valid,
                     }
@@ -243,6 +293,34 @@ def _median_and_frac(
     return median_T, frac_rejected
 
 
+def _z_summaries(tiles: list[TileResult]) -> tuple[float, float, float]:
+    """Compute ``(mean_Z, median_Z, p90_Z)`` over valid tiles.
+
+    Tiles with ``NaN`` ``Z_obs`` (skipped tiles) are excluded.
+
+    Parameters
+    ----------
+    tiles : list of TileResult
+        Per-tile outcomes.
+
+    Returns
+    -------
+    tuple of float
+        ``mean_Z``, ``median_Z`` and ``p90_Z`` (all ``nan`` if no tile has a
+        valid ``Z_obs``).
+    """
+    valid_Z = np.array(
+        [t.Z_obs for t in tiles if not np.isnan(t.Z_obs)], dtype=np.float64
+    )
+    if not valid_Z.size:
+        return float("nan"), float("nan"), float("nan")
+    return (
+        float(np.mean(valid_Z)),
+        float(np.median(valid_Z)),
+        float(np.percentile(valid_Z, 90)),
+    )
+
+
 def aggregate_channel(
     tiles: list[TileResult],
     alpha: float,
@@ -265,11 +343,15 @@ def aggregate_channel(
         Per-channel roll-up.
     """
     median_T, frac_rejected = _median_and_frac(tiles, alpha)
+    mean_Z, median_Z, p90_Z = _z_summaries(tiles)
     return ChannelReport(
         channel=channel,
         tiles=tiles,
         median_T=median_T,
         frac_rejected=frac_rejected,
+        mean_Z=mean_Z,
+        median_Z=median_Z,
+        p90_Z=p90_Z,
     )
 
 
@@ -299,11 +381,15 @@ def aggregate_image(
     """
     pooled_tiles = [t for ch in channels.values() for t in ch.tiles]
     median_T, frac_rejected = _median_and_frac(pooled_tiles, alpha)
+    mean_Z, median_Z, p90_Z = _z_summaries(pooled_tiles)
     return ImageReport(
         image_id=image_id,
         channels=channels,
         median_T=median_T,
         frac_rejected=frac_rejected,
+        mean_Z=mean_Z,
+        median_Z=median_Z,
+        p90_Z=p90_Z,
     )
 
 
@@ -336,36 +422,43 @@ def aggregate_method(
 
     channel_medians: dict[int, list[float]] = {}
     channel_fracs: dict[int, list[float]] = {}
+    channel_mean_Z: dict[int, list[float]] = {}
+    channel_median_Z: dict[int, list[float]] = {}
+    channel_p90_Z: dict[int, list[float]] = {}
     for image in images.values():
         for channel, ch in image.channels.items():
             if not np.isnan(ch.median_T):
                 channel_medians.setdefault(channel, []).append(ch.median_T)
             if not np.isnan(ch.frac_rejected):
                 channel_fracs.setdefault(channel, []).append(ch.frac_rejected)
+            if not np.isnan(ch.mean_Z):
+                channel_mean_Z.setdefault(channel, []).append(ch.mean_Z)
+            if not np.isnan(ch.median_Z):
+                channel_median_Z.setdefault(channel, []).append(ch.median_Z)
+            if not np.isnan(ch.p90_Z):
+                channel_p90_Z.setdefault(channel, []).append(ch.p90_Z)
 
     all_channels = {
         c for im in images.values() for c in im.channels
     }
-    mean_median_T = {
-        c: (
-            float(np.mean(channel_medians[c]))
-            if channel_medians.get(c)
-            else float("nan")
-        )
-        for c in all_channels
-    }
-    mean_frac_rejected = {
-        c: (
-            float(np.mean(channel_fracs[c]))
-            if channel_fracs.get(c)
-            else float("nan")
-        )
-        for c in all_channels
-    }
+
+    def _channel_means(per_channel: dict[int, list[float]]) -> dict[int, float]:
+        return {
+            c: (
+                float(np.mean(per_channel[c]))
+                if per_channel.get(c)
+                else float("nan")
+            )
+            for c in all_channels
+        }
+
     return MethodReport(
         method_name=method_name,
         dataset=dataset,
         images=images,
-        mean_median_T=mean_median_T,
-        mean_frac_rejected=mean_frac_rejected,
+        mean_median_T=_channel_means(channel_medians),
+        mean_frac_rejected=_channel_means(channel_fracs),
+        mean_mean_Z=_channel_means(channel_mean_Z),
+        mean_median_Z=_channel_means(channel_median_Z),
+        mean_p90_Z=_channel_means(channel_p90_Z),
     )
