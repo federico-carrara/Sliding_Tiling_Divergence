@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Single-method per-tile-metric CLI.
+"""Multi-method per-tile-metric CLI.
 
-Loads one prediction file, runs the per-tile two-sample test on its image
-set, and pickles the resulting ``MethodReport`` to
-``save_dir/<method_name>_per_tile_report.pkl``.
+Loads 2-5 predictions, runs the per-tile two-sample test on each, and prints
+a per-method summary. The structured ``MultiMethodReport`` is pickled to
+``save_dir/per_tile_report.pkl`` so downstream notebooks can load it
+directly.
 """
 
 from __future__ import annotations
@@ -13,8 +14,8 @@ import sys
 
 import numpy as np
 
-from analysis_pipeline.config.analysis import load_gradient_test_single_config_from_args
-from analysis_pipeline.gradient_test.analysis import run_gradient_analysis
+from analysis_pipeline.config.analysis import load_gradient_test_config_from_args
+from analysis_pipeline.gradient_test.comparison import run_gradient_analysis_multi
 from analysis_pipeline.utils import ensure_4d, load_prediction
 
 
@@ -47,7 +48,7 @@ def parse_comma_separated_ints(value: str) -> list[int]:
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments for the single-method per-tile CLI.
+    """Parse command-line arguments for the per-tile analysis CLI.
 
     Returns
     -------
@@ -56,8 +57,8 @@ def parse_args() -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(
         description=(
-            "Per-tile two-sample test for stitching artifacts. Runs the "
-            "metric on a single prediction set for one method."
+            "Per-tile two-sample test for stitching artifacts. Compares 2-5 "
+            "predictions of the same image set."
         )
     )
 
@@ -69,21 +70,21 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--dataset", required=True, help="Dataset name.")
     parser.add_argument(
-        "--prediction",
+        "--predictions",
         required=True,
         type=str,
-        help="Prediction file (.tiff/.pkl).",
+        help="Comma-separated prediction files (.tiff/.pkl).",
     )
     parser.add_argument(
-        "--method_name",
+        "--method_names",
         required=True,
         type=str,
-        help="Display name for the method (used in logs and the pickle filename).",
+        help="Comma-separated method names, e.g. 'OG,SW,Method3'.",
     )
     parser.add_argument(
         "--save_dir",
         required=True,
-        help="Directory to drop the pickled MethodReport.",
+        help="Directory to drop the pickled MultiMethodReport.",
     )
 
     # TiledPatching geometry (per spatial axis, in image-pixel units).
@@ -138,7 +139,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
-    """Run the per-tile metric pipeline for a single method from CLI arguments.
+    """Run the per-tile metric pipeline from CLI arguments.
 
     Returns
     -------
@@ -148,20 +149,17 @@ def main() -> int:
     args = parse_args()
 
     try:
-        config = load_gradient_test_single_config_from_args(args)
+        config = load_gradient_test_config_from_args(args)
     except ValueError as e:
         print(f"Configuration error: {e}", file=sys.stderr)
         return 1
 
-    prediction_file = config.predictions[0]
-    method_name = config.method_names[0]
-
     print("=" * 60)
-    print("PER-TILE METRIC PIPELINE (single method)")
+    print("PER-TILE METRIC PIPELINE")
     print("=" * 60)
-    print(f"Method:      {method_name}")
+    print(f"Methods:     {', '.join(config.method_names)}")
     print(f"Dataset:     {config.dataset}")
-    print(f"Prediction:  {prediction_file}")
+    print(f"Predictions: {config.predictions}")
     print(f"Save dir:    {config.save_dir}")
     print(f"Tile size:   {config.gradient_test.tile_size}")
     print(f"Overlap:     {config.gradient_test.overlap}")
@@ -171,25 +169,30 @@ def main() -> int:
 
     config.save_dir.mkdir(parents=True, exist_ok=True)
 
-    print("\nLoading prediction...")
-    print(f"  {method_name}: {prediction_file}")
-    try:
-        pred = load_prediction(prediction_file)
-        if pred.ndim == 6:
-            pred = np.squeeze(pred, axis=0)
-        pred = ensure_4d(pred)
-        print(f"    shape: {pred.shape}")
-    except Exception as e:
-        print(f"Error loading {prediction_file}: {e}", file=sys.stderr)
-        return 1
+    print("\nLoading predictions...")
+    predictions_list: list[np.ndarray] = []
+    for pred_file, method_name in zip(
+        config.predictions, config.method_names, strict=True
+    ):
+        print(f"  {method_name}: {pred_file}")
+        try:
+            pred = load_prediction(pred_file)
+            if pred.ndim == 6:
+                pred = np.squeeze(pred, axis=0)
+            pred = ensure_4d(pred)
+            print(f"    shape: {pred.shape}")
+            predictions_list.append(pred)
+        except Exception as e:
+            print(f"Error loading {pred_file}: {e}", file=sys.stderr)
+            return 1
 
     print("\nRunning per-tile analysis...")
-    run_gradient_analysis(
-        predictions=pred,
+    run_gradient_analysis_multi(
+        predictions_list=predictions_list,
+        method_names=config.method_names,
         save_dir=config.save_dir,
         tile_size=config.gradient_test.tile_size,
         overlap=config.gradient_test.overlap,
-        method_name=method_name,
         statistic=config.gradient_test.statistic,
         strip_width=config.gradient_test.strip_width,
         block_size=config.gradient_test.block_size,

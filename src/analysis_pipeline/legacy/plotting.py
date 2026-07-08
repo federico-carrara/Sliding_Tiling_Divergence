@@ -8,8 +8,10 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import norm
 
-from .metrics import compute_kl_matrix, normalize_histogram
+from analysis_pipeline.legacy.metrics import compute_kl_matrix, normalize_histogram
 
+
+# TODO: deprecated dead-code, kept only for keeping ideas around
 
 def plot_multiple_hist(
     ax: plt.Axes,
@@ -20,17 +22,30 @@ def plot_multiple_hist(
     title: str,
     legend: bool = False,
 ) -> None:
-    """
-    Plot multiple precomputed histograms with fitted normal distributions.
+    """Plot multiple precomputed histograms with fitted normal distributions.
 
-    Args:
-        ax: Matplotlib axis to plot on
-        histograms: List of histogram count arrays
-        bin_edges: Shared bin edges for all histograms
-        labels: Labels for each histogram
-        colors: Colors for each histogram
-        title: Plot title
-        legend: Whether to display legend
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Axis to plot on.
+    histograms : list of np.ndarray
+        Histogram count arrays.
+    bin_edges : np.ndarray
+        Shared bin edges for all histograms.
+    labels : list of str
+        Labels for each histogram.
+    colors : list of str
+        Colors for each histogram.
+    title : str
+        Plot title.
+    legend : bool, default=False
+        Whether to display the legend.
+
+    Raises
+    ------
+    ValueError
+        If ``histograms``, ``labels`` and ``colors`` do not all have the
+        same length.
     """
     if not (len(histograms) == len(labels) == len(colors)):
         raise ValueError("histograms, labels, and colors must have the same length")
@@ -113,16 +128,28 @@ def plot_multiple_boxplots(
     titles_list: List[str],
     legend: bool = False,
 ) -> None:
-    """
-    Plot multiple boxplots dynamically on given axes.
+    """Plot multiple boxplots dynamically on the given axes.
 
-    Args:
-        axs: List of matplotlib axes
-        arrays_list: List of lists of arrays to plot
-        labels_list: Labels for each array in each subplot
-        colors_list: Colors for each box in each subplot
-        titles_list: Titles for each subplot
-        legend: Whether to add legend
+    Parameters
+    ----------
+    axs : list of matplotlib.axes.Axes
+        Axes to plot on, one per subplot.
+    arrays_list : list of list of np.ndarray
+        Arrays to plot, grouped by subplot.
+    labels_list : list of list of str
+        Labels for each array in each subplot.
+    colors_list : list of list of str
+        Colors for each box in each subplot.
+    titles_list : list of str
+        Titles for each subplot.
+    legend : bool, default=False
+        Whether to add a legend.
+
+    Raises
+    ------
+    ValueError
+        If ``axs``, ``arrays_list``, ``labels_list``, ``colors_list`` and
+        ``titles_list`` do not all have the same length.
     """
     if not (
         len(axs)
@@ -157,22 +184,31 @@ def plot_kl_heatmaps_for_range(
     labels: Optional[List[str]] = None,
     cmap: str = "coolwarm",
 ) -> plt.Figure:
-    """
-    Generate KL divergence heatmaps for a range of tile positions.
+    """Generate KL divergence heatmaps for a range of tile positions.
 
-    Args:
-        grad_utils_list: List of gradient utility objects
-        bin_edges: Bin edges for histograms
-        start: Start index for position range
-        end: End index for position range
-        channels: Channel to analyze
-        labels: Method labels
-        cmap: Colormap for heatmap
+    Parameters
+    ----------
+    grad_utils_list : list
+        Gradient utility objects, one per method.
+    bin_edges : np.ndarray
+        Bin edges shared across histograms.
+    start : int, default=29
+        Start index of the position range (inclusive).
+    end : int, default=34
+        End index of the position range (inclusive).
+    channels : int, default=1
+        Channel index to analyse.
+    labels : list of str, optional
+        Method labels (``"Model{i}"`` is used if None).
+    cmap : str, default="coolwarm"
+        Colormap for the heatmap.
 
-    Returns:
-        Matplotlib figure
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Figure with one heatmap subplot per position.
     """
-    from .gradient_analysis import GradientUtils
+    from analysis_pipeline.gradient_test.gradient_analysis import GradientUtils
 
     n_utils = len(grad_utils_list)
     if labels is None:
@@ -232,13 +268,16 @@ def plot_kl_heatmaps_for_range(
 
 
 def save_figure(fig: plt.Figure, save_path: Path, dpi: int = 300) -> None:
-    """
-    Save figure to file and close it.
+    """Save a figure to file and close it.
 
-    Args:
-        fig: Matplotlib figure
-        save_path: Path to save figure
-        dpi: DPI for saved figure
+    Parameters
+    ----------
+    fig : matplotlib.figure.Figure
+        Figure to save.
+    save_path : pathlib.Path
+        Output file path.
+    dpi : int, default=300
+        Resolution for the saved figure.
     """
     fig.savefig(save_path, dpi=dpi, bbox_inches="tight")
     plt.close(fig)

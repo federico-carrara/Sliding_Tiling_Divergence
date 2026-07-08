@@ -9,18 +9,24 @@ import tifffile as tiff
 
 
 def load_prediction(path: Union[str, Path]) -> np.ndarray:
-    """
-    Load prediction from file (.pkl, .dill, or .tiff).
+    """Load a prediction array from file (.pkl, .dill, or .tiff).
 
-    Args:
-        path: Path to prediction file
+    Parameters
+    ----------
+    path : str or pathlib.Path
+        Path to prediction file.
 
-    Returns:
-        Loaded prediction array
+    Returns
+    -------
+    np.ndarray
+        Loaded prediction array.
 
-    Raises:
-        ValueError: If file format is not supported
-        FileNotFoundError: If file does not exist
+    Raises
+    ------
+    FileNotFoundError
+        If the file does not exist.
+    ValueError
+        If the file extension is not one of ``.pkl``, ``.dill``, ``.tif``, ``.tiff``.
     """
     path = Path(path)
 
