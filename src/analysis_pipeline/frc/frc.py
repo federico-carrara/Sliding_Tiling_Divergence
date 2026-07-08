@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from analysis_pipeline.frc.aggregation import FRCImageResult
+from analysis_pipeline.frc.aggregation import FRCChannelResult
 from analysis_pipeline.frc.windowing import apply_hamming_window_2d
 
 
@@ -29,7 +29,8 @@ def per_image_frc(
     ground_truth: np.ndarray,
     *,
     apply_window: bool = True,
-) -> FRCImageResult:
+    channel: int = 0,
+) -> FRCChannelResult:
     """Compute the FRC curve of ``prediction`` against ``ground_truth``.
 
     Parameters
@@ -42,10 +43,12 @@ def per_image_frc(
         If True (default), multiply both images by a 2-D Hamming window
         before the FFT. Disable only for sanity tests where periodic-image
         assumptions hold (e.g. white noise against itself).
+    channel : int, default=0
+        Channel index this slice was taken from; stamped onto the result.
 
     Returns
     -------
-    FRCImageResult
+    FRCChannelResult
         Per-bin FRC values, matching frequency-bin centres in cycles/pixel,
         and the input image shape.
 
@@ -103,7 +106,8 @@ def per_image_frc(
 
     freqs = np.arange(minlength, dtype=np.float64) / n
 
-    return FRCImageResult(
+    return FRCChannelResult(
+        channel=channel,
         freqs=freqs,
         frc=frc,
         image_shape=(h, w),

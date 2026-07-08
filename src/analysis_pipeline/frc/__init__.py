@@ -10,7 +10,8 @@ See ``agents_artifacts/FRC_metric.md`` for the full spec.
 """
 
 from analysis_pipeline.frc.aggregation import (
-    FRCImageResult,
+    FRCChannelResult,
+    FRCImageReport,
     FRCMethodReport,
     FRCMultiMethodReport,
     aggregate_method,
@@ -21,7 +22,8 @@ from analysis_pipeline.frc.frc import per_image_frc
 from analysis_pipeline.frc.windowing import apply_hamming_window_2d
 
 __all__ = [
-    "FRCImageResult",
+    "FRCChannelResult",
+    "FRCImageReport",
     "FRCMethodReport",
     "FRCMultiMethodReport",
     "aggregate_method",
