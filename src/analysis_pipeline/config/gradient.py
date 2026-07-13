@@ -103,14 +103,14 @@ class GradientTestConfig(BaseModel):
         ValueError
             If ``tile_size`` and ``overlap`` have different lengths, if any
             ``overlap[i] >= tile_size[i]``, or if any axis step is too small
-            for ``2 * strip_width + 2``.
+            for ``2 * strip_width + 1``.
         """
         if len(self.tile_size) != len(self.overlap):
             raise ValueError(
                 f"tile_size and overlap must have the same number of axes "
                 f"(got {len(self.tile_size)} vs {len(self.overlap)})"
             )
-        min_step = 2 * self.strip_width + 2
+        min_step = 2 * self.strip_width + 1
         for i, (t, o) in enumerate(zip(self.tile_size, self.overlap)):
             if o >= t:
                 raise ValueError(
@@ -120,7 +120,7 @@ class GradientTestConfig(BaseModel):
             if step < min_step:
                 raise ValueError(
                     f"axis {i}: step = tile_size - overlap = {step} < "
-                    f"{min_step} = 2*strip_width + 2. Lower strip_width or "
+                    f"{min_step} = 2*strip_width + 1. Lower strip_width or "
                     f"reduce overlap[{i}]."
                 )
         return self

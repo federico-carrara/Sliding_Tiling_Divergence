@@ -15,7 +15,7 @@ engine in :mod:`permutation` can partition each slice independently — blocks
 must not span slice boundaries, otherwise the test would carry spurious
 "coherence" between unrelated seams.
 
-The orchestrator is expected to have validated ``step >= 2*strip_width + 2``
+The orchestrator is expected to have validated ``step >= 2*strip_width + 1``
 along every axis before calling here, so all strip indices are guaranteed to
 land inside the gradient arrays.
 """
@@ -151,7 +151,7 @@ def sample_tile(
     the seam line plus ``2 * strip_width`` parallel control strips at offsets
     ``{-N, ..., -1, +1, ..., +N}`` along the seam's across-axis.
 
-    Pre-condition: along every owned-seam axis, ``step >= 2*strip_width + 2``
+    Pre-condition: along every owned-seam axis, ``step >= 2*strip_width + 1``
     so that all ``2 * strip_width`` strip offsets land inside the gradient.
     The orchestrator enforces this.
 

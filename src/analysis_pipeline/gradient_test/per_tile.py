@@ -55,14 +55,14 @@ def _validate_step_vs_strip(
     Raises
     ------
     ValueError
-        If on any axis ``tile_size - overlap < 2 * strip_width + 2``.
+        If on any axis ``tile_size - overlap < 2 * strip_width + 1``.
     """
     for i, (ts, ov) in enumerate(zip(tile_size, overlap, strict=True)):
         step = ts - ov
-        if step < 2 * strip_width + 2:
+        if step < 2 * strip_width + 1:
             raise ValueError(
                 f"axis {i}: step = tile_size - overlap = {step} but strip_width="
-                f"{strip_width} requires step >= 2*N + 2 = {2 * strip_width + 2}. "
+                f"{strip_width} requires step >= 2*N + 1 = {2 * strip_width + 1}. "
                 "Lower --strip_width or use a smaller overlap."
             )
 
