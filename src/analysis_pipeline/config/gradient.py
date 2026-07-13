@@ -43,8 +43,12 @@ class GradientTestConfig(BaseModel):
         Number of histogram bins for binned statistics (KL, JS).
     random_seed : int, default=0
         RNG seed.
-    pool_z_with_xy : bool, default=True
-        If False (reserved for v2), run separate xy and z tests in 3D.
+    normalize_per_axis : bool, default=True
+        Standardize gradients per axis by image-wide ``(mean, std)`` (seam+control
+        pooled) so gradients from all axes can be pooled into one test.
+    balance_axis_counts : bool, default=True
+        Subsample per tile so every owned-seam axis contributes an equal number of
+        blocks. Only statistically valid alongside ``normalize_per_axis``.
     channel : int, default=0
         Channel index to analyse.
     """
@@ -58,7 +62,8 @@ class GradientTestConfig(BaseModel):
     alpha: float = Field(default=0.05, gt=0.0, lt=1.0)
     num_bins_per_tile: int = Field(default=32, ge=2)
     random_seed: int = 0
-    pool_z_with_xy: bool = True
+    normalize_per_axis: bool = True
+    balance_axis_counts: bool = True
     channel: int = Field(default=0, ge=0)
 
     @field_validator("n_permutations")

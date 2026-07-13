@@ -34,60 +34,62 @@ def main() -> None:
     x_seam = int(seams_x[1])
     image[:, x_seam:] += 2.0
 
-    report = per_image_tile_scan(
-        image,
-        tile_size=[TS, TS],
-        overlap=[OV, OV],
-        strip_width=4,
-        block_size=3,
-        n_permutations=400,
-        statistic="kl",
-        alpha=ALPHA,
-        num_bins_per_tile=32,
-        rng=np.random.default_rng(2),
-    )
-
     affected_columns = (1, 2)  # seams_x[1] separates region 1 from region 2
 
-    aff_T = [
-        t.T_obs
-        for t in report.tiles
-        if t.coord[1] in affected_columns and not np.isnan(t.T_obs)
-    ]
-    far_T = [
-        t.T_obs
-        for t in report.tiles
-        if t.coord[1] not in affected_columns and not np.isnan(t.T_obs)
-    ]
-    aff_rej = sum(
-        1
-        for t in report.tiles
-        if t.coord[1] in affected_columns
-        and not np.isnan(t.p)
-        and t.p < ALPHA
-    )
-    far_rej = sum(
-        1
-        for t in report.tiles
-        if t.coord[1] not in affected_columns
-        and not np.isnan(t.p)
-        and t.p < ALPHA
-    )
-    aff_total = len([t for t in report.tiles if t.coord[1] in affected_columns])
-    far_total = len([t for t in report.tiles if t.coord[1] not in affected_columns])
+    def _metrics(normalize: bool, balance: bool):
+        report = per_image_tile_scan(
+            image,
+            tile_size=[TS, TS],
+            overlap=[OV, OV],
+            strip_width=4,
+            block_size=3,
+            n_permutations=400,
+            statistic="kl",
+            alpha=ALPHA,
+            num_bins_per_tile=32,
+            rng=np.random.default_rng(2),
+            normalize_per_axis=normalize,
+            balance_axis_counts=balance,
+        )
+        aff_T, far_T, aff_rej, far_rej, aff_total, far_total = [], [], 0, 0, 0, 0
+        for t in report.tiles:
+            in_aff = t.coord[1] in affected_columns
+            if in_aff:
+                aff_total += 1
+            else:
+                far_total += 1
+            if not np.isnan(t.T_obs):
+                (aff_T if in_aff else far_T).append(t.T_obs)
+            if not np.isnan(t.p) and t.p < ALPHA:
+                if in_aff:
+                    aff_rej += 1
+                else:
+                    far_rej += 1
+        return (
+            float(np.median(aff_T)),
+            float(np.median(far_T)),
+            aff_rej / aff_total,
+            far_rej / far_total,
+        )
 
-    print(f"affected columns (j in {affected_columns}):")
-    print(f"  median T = {np.median(aff_T):.3f} | rejected {aff_rej}/{aff_total}")
-    print("far columns:")
-    print(f"  median T = {np.median(far_T):.3f} | rejected {far_rej}/{far_total}")
+    # Raw engine (anisotropy corrections off): the original, strict claim — the
+    # injected seam elevates affected-column T by > 3x and concentrates rejections.
+    med_aff, med_far, aff_rate, far_rate = _metrics(normalize=False, balance=False)
+    print(f"[raw]      median T aff/far = {med_aff:.3f}/{med_far:.3f} "
+          f"| rej aff/far = {aff_rate:.2f}/{far_rate:.2f}")
+    assert aff_rate >= 0.5, f"[raw] affected rejection rate {aff_rate:.2f} < 0.5"
+    assert far_rate <= 0.15, f"[raw] far rejection rate {far_rate:.2f} > 0.15"
+    assert med_aff > 3 * med_far, "[raw] median T aff not > 3x far"
 
-    aff_rate = aff_rej / aff_total
-    far_rate = far_rej / far_total
-    assert aff_rate >= 0.5, f"affected rejection rate {aff_rate:.2f} < 0.5"
-    assert far_rate <= 0.15, f"far rejection rate {far_rate:.2f} > 0.15"
-    assert np.median(aff_T) > 3 * np.median(far_T), (
-        "median T in affected columns not clearly elevated above far columns"
-    )
+    # Anisotropy defaults on: per-axis normalization + count balancing slightly
+    # dilute a single-axis 2-D artifact (balancing subsamples the artifact axis in
+    # edge tiles), so the magnitude gap shrinks — but localization must survive.
+    med_aff, med_far, aff_rate, far_rate = _metrics(normalize=True, balance=True)
+    print(f"[defaults] median T aff/far = {med_aff:.3f}/{med_far:.3f} "
+          f"| rej aff/far = {aff_rate:.2f}/{far_rate:.2f}")
+    assert aff_rate >= 0.5, f"[defaults] affected rejection rate {aff_rate:.2f} < 0.5"
+    assert far_rate <= 0.15, f"[defaults] far rejection rate {far_rate:.2f} > 0.15"
+    assert med_aff > 2 * med_far, "[defaults] median T aff not > 2x far"
 
     print("OK: artifact injection")
 

@@ -9,7 +9,6 @@ lives in :mod:`.comparison`.
 
 from __future__ import annotations
 
-import warnings
 from pathlib import Path
 from typing import Iterable, Mapping, Optional, Sequence
 
@@ -40,7 +39,8 @@ def run_gradient_analysis(
     alpha: float = 0.05,
     num_bins_per_tile: int = 32,
     random_seed: int = 0,
-    pool_z_with_xy: bool = True,
+    normalize_per_axis: bool = True,
+    balance_axis_counts: bool = True,
     verbose: bool = True,
 ) -> ImageReport:
     """Run the per-tile metric on a single channel-first image.
@@ -79,8 +79,12 @@ def run_gradient_analysis(
     random_seed : int, default=0
         RNG seed. A fresh generator is created per call, so an image's result is
         independent of any other image (reproducible regardless of run order).
-    pool_z_with_xy : bool, default=True
-        If False (reserved for v2), run separate xy and z tests in 3D.
+    normalize_per_axis : bool, default=True
+        Standardize gradients per axis by image-wide ``(mean, std)`` (seam+control
+        pooled) so gradients from all axes can be pooled into one test.
+    balance_axis_counts : bool, default=True
+        Subsample per tile so every owned-seam axis contributes an equal number of
+        blocks. Only statistically valid alongside ``normalize_per_axis``.
     verbose : bool, default=True
         Print a one-line per-channel summary for this image.
 
@@ -128,14 +132,6 @@ def run_gradient_analysis(
                     f"{image_id}: channel={c} out of range for C={n_channels}"
                 )
 
-    if not is_2d and not pool_z_with_xy:
-        warnings.warn(
-            "pool_z_with_xy=False is reserved for a future revision; the v1 "
-            "implementation always pools all spatial axes. Result reflects "
-            "pool_z_with_xy=True.",
-            stacklevel=2,
-        )
-
     rng = np.random.default_rng(random_seed)
 
     channel_reports: dict[int, ChannelReport] = {}
@@ -152,6 +148,8 @@ def run_gradient_analysis(
             num_bins_per_tile=num_bins_per_tile,
             rng=rng,
             channel=c,
+            normalize_per_axis=normalize_per_axis,
+            balance_axis_counts=balance_axis_counts,
         )
 
     image_report = aggregate_image(image_id, channel_reports, alpha)
@@ -184,7 +182,8 @@ def run_gradient_analysis_dataset(
     alpha: float = 0.05,
     num_bins_per_tile: int = 32,
     random_seed: int = 0,
-    pool_z_with_xy: bool = True,
+    normalize_per_axis: bool = True,
+    balance_axis_counts: bool = True,
     verbose: bool = True,
 ) -> MethodReport:
     """Run :func:`run_gradient_analysis` over a set of images for one method.
@@ -213,7 +212,7 @@ def run_gradient_analysis_dataset(
         Channel indices to analyse (``None`` = all), forwarded to each image.
     save_dir : pathlib.Path, optional
         Directory for the JSON report; ``None`` skips writing.
-    statistic, strip_width, block_size, n_permutations, alpha, num_bins_per_tile, random_seed, pool_z_with_xy
+    statistic, strip_width, block_size, n_permutations, alpha, num_bins_per_tile, random_seed, normalize_per_axis, balance_axis_counts
         Forwarded per image to :func:`run_gradient_analysis`.
     verbose : bool, default=True
         Print per-image and per-method summaries.
@@ -244,7 +243,8 @@ def run_gradient_analysis_dataset(
             alpha=alpha,
             num_bins_per_tile=num_bins_per_tile,
             random_seed=random_seed,
-            pool_z_with_xy=pool_z_with_xy,
+            normalize_per_axis=normalize_per_axis,
+            balance_axis_counts=balance_axis_counts,
             verbose=verbose,
         )
 

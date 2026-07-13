@@ -165,7 +165,8 @@ def load_gradient_test_config_from_args(args) -> AnalysisConfig:
         alpha=args.alpha,
         num_bins_per_tile=args.num_bins_per_tile,
         random_seed=args.random_seed,
-        pool_z_with_xy=args.pool_z_with_xy,
+        normalize_per_axis=args.normalize_per_axis,
+        balance_axis_counts=args.balance_axis_counts,
         channel=args.channel,
     )
 
@@ -283,7 +284,8 @@ def load_gradient_test_single_config_from_args(args) -> AnalysisConfig:
         alpha=args.alpha,
         num_bins_per_tile=args.num_bins_per_tile,
         random_seed=args.random_seed,
-        pool_z_with_xy=args.pool_z_with_xy,
+        normalize_per_axis=args.normalize_per_axis,
+        balance_axis_counts=args.balance_axis_counts,
         channel=args.channel,
     )
 

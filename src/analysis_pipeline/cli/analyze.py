@@ -121,14 +121,18 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--random_seed", type=int, default=0, help="RNG seed.")
     parser.add_argument(
-        "--no_pool_z_with_xy",
-        dest="pool_z_with_xy",
+        "--no_normalize_per_axis",
+        dest="normalize_per_axis",
         action="store_false",
         default=True,
-        help=(
-            "Reserved for v2: when set, run separate xy and z tests in 3D. "
-            "Currently emits a warning and behaves as if pooling were on."
-        ),
+        help="Disable per-axis mean/std normalization of gradients before pooling.",
+    )
+    parser.add_argument(
+        "--no_balance_axis_counts",
+        dest="balance_axis_counts",
+        action="store_false",
+        default=True,
+        help="Disable per-axis count balancing (equal blocks per axis) within tiles.",
     )
     parser.add_argument(
         "--channel", type=int, default=0, help="Channel index to analyze (0-based)."
@@ -197,7 +201,8 @@ def main() -> int:
         alpha=config.gradient_test.alpha,
         num_bins_per_tile=config.gradient_test.num_bins_per_tile,
         random_seed=config.gradient_test.random_seed,
-        pool_z_with_xy=config.gradient_test.pool_z_with_xy,
+        normalize_per_axis=config.gradient_test.normalize_per_axis,
+        balance_axis_counts=config.gradient_test.balance_axis_counts,
         channel=config.gradient_test.channel,
     )
 

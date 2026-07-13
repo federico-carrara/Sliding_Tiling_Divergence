@@ -39,10 +39,16 @@ class TileGradientSample:
         One 1-D array per owned seam, of across-seam gradients along the seam line.
     control_slices : list of np.ndarray
         ``2 * strip_width`` 1-D arrays per owned seam, one per control-strip offset.
+    seam_axes : list of int
+        Spatial-axis index of each entry in ``seam_slices`` (parallel list).
+    control_axes : list of int
+        Spatial-axis index of each entry in ``control_slices`` (parallel list).
     """
 
     seam_slices: list[np.ndarray]
     control_slices: list[np.ndarray]
+    seam_axes: list[int]
+    control_axes: list[int]
 
     @property
     def seam_sample(self) -> np.ndarray:
@@ -111,6 +117,29 @@ def _slice_along(
     return np.ascontiguousarray(gradient[tuple(sl)]).ravel()
 
 
+def group_by_axis(
+    slices: list[np.ndarray], axes: list[int]
+) -> dict[int, list[np.ndarray]]:
+    """Group parallel ``(slice, axis)`` lists into a per-axis dict.
+
+    Parameters
+    ----------
+    slices : list of np.ndarray
+        1-D gradient slices (seam or control).
+    axes : list of int
+        Spatial-axis index of each entry in ``slices`` (parallel list).
+
+    Returns
+    -------
+    dict of int to list of np.ndarray
+        Mapping ``axis -> list of slices`` belonging to that axis.
+    """
+    out: dict[int, list[np.ndarray]] = {}
+    for s, a in zip(slices, axes, strict=True):
+        out.setdefault(a, []).append(s)
+    return out
+
+
 def sample_tile(
     gradients: tuple[np.ndarray, ...],
     tile: Tile,
@@ -144,6 +173,8 @@ def sample_tile(
     """
     seam_slices: list[np.ndarray] = []
     control_slices: list[np.ndarray] = []
+    seam_axes: list[int] = []
+    control_axes: list[int] = []
 
     for seam in tile.seams:
         a = seam.axis
@@ -151,6 +182,7 @@ def sample_tile(
         g_idx = seam.grad_idx
 
         seam_slices.append(_slice_along(g, tile.ranges, a, g_idx))
+        seam_axes.append(a)
 
         for offset in range(-strip_width, strip_width + 1):
             if offset == 0:
@@ -158,5 +190,11 @@ def sample_tile(
             control_slices.append(
                 _slice_along(g, tile.ranges, a, g_idx + offset)
             )
+            control_axes.append(a)
 
-    return TileGradientSample(seam_slices=seam_slices, control_slices=control_slices)
+    return TileGradientSample(
+        seam_slices=seam_slices,
+        control_slices=control_slices,
+        seam_axes=seam_axes,
+        control_axes=control_axes,
+    )

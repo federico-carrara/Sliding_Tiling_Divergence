@@ -73,7 +73,8 @@ def run_gradient_analysis_multi(
     alpha: float = 0.05,
     num_bins_per_tile: int = 32,
     random_seed: int = 0,
-    pool_z_with_xy: bool = True,
+    normalize_per_axis: bool = True,
+    balance_axis_counts: bool = True,
     channel: int = 0,
 ) -> MultiMethodReport:
     """Run the per-tile metric on N predictions and return a multi-method report.
@@ -113,8 +114,10 @@ def run_gradient_analysis_multi(
         Histogram bin count for binned statistics (KL, JS).
     random_seed : int, default=0
         RNG seed.
-    pool_z_with_xy : bool, default=True
-        If False (reserved for v2), run separate xy and z tests in 3D.
+    normalize_per_axis : bool, default=True
+        Standardize gradients per axis by image-wide ``(mean, std)`` before pooling.
+    balance_axis_counts : bool, default=True
+        Subsample per tile so every owned-seam axis contributes equal block counts.
     channel : int, default=0
         Channel index to analyse.
 
@@ -148,7 +151,8 @@ def run_gradient_analysis_multi(
             "alpha": alpha,
             "num_bins_per_tile": num_bins_per_tile,
             "random_seed": random_seed,
-            "pool_z_with_xy": pool_z_with_xy,
+            "normalize_per_axis": normalize_per_axis,
+            "balance_axis_counts": balance_axis_counts,
             "channel": channel,
             "tile_size": tile_size_per,
             "overlap": overlap_per,
@@ -171,7 +175,8 @@ def run_gradient_analysis_multi(
             alpha=alpha,
             num_bins_per_tile=num_bins_per_tile,
             random_seed=random_seed,
-            pool_z_with_xy=pool_z_with_xy,
+            normalize_per_axis=normalize_per_axis,
+            balance_axis_counts=balance_axis_counts,
             channel=channel,
         )
 
