@@ -167,7 +167,7 @@ def load_gradient_test_config_from_args(args) -> AnalysisConfig:
         random_seed=args.random_seed,
         normalize_per_axis=args.normalize_per_axis,
         balance_axis_counts=args.balance_axis_counts,
-        channel=args.channel,
+        channels=[args.channel],
     )
 
     return AnalysisConfig(
@@ -286,7 +286,7 @@ def load_gradient_test_single_config_from_args(args) -> AnalysisConfig:
         random_seed=args.random_seed,
         normalize_per_axis=args.normalize_per_axis,
         balance_axis_counts=args.balance_axis_counts,
-        channel=args.channel,
+        channels=[args.channel],
     )
 
     return AnalysisConfig(

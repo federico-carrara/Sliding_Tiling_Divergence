@@ -31,6 +31,7 @@ import numpy as np
 import pandas as pd
 import tifffile as tiff
 
+from analysis_pipeline.config import GradientTestConfig
 from analysis_pipeline.gradient_test.aggregation import MethodReport
 from analysis_pipeline.gradient_test.analysis import run_gradient_analysis_dataset
 
@@ -115,6 +116,24 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--random_seed", type=int, default=0, help="RNG seed.")
     p.add_argument(
+        "--strip_width",
+        type=int,
+        default=4,
+        help="Half-width N of the control strip around each seam.",
+    )
+    p.add_argument(
+        "--block_size",
+        type=int,
+        default=3,
+        help="Contiguous-block size B for the permutation engine.",
+    )
+    p.add_argument(
+        "--num_bins_per_tile",
+        type=int,
+        default=32,
+        help="Histogram bins for binned statistics (KL, JS).",
+    )
+    p.add_argument(
         "--max_images",
         type=int,
         default=None,
@@ -183,6 +202,22 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     pred_root = args.results_root / args.dataset / args.predictions_subdir
 
+    cfg = GradientTestConfig(
+        tile_size=list(args.tile_size),
+        overlap=list(args.overlap),
+        statistic=args.statistic,
+        strip_width=args.strip_width,
+        block_size=args.block_size,
+        n_permutations=args.n_permutations,
+        alpha=args.alpha,
+        num_bins_per_tile=args.num_bins_per_tile,
+        random_seed=args.random_seed,
+        normalize_per_axis=True,
+        balance_axis_counts=True,
+        channels=args.channels,
+    )
+    (out_dir / "gradient_test_config.json").write_text(cfg.model_dump_json(indent=2))
+
     # Image names shared across methods/GT (cheap: reads the archive directory).
     first_subdir = METHODS_TO_SUBDIR[args.methods[0]]
     image_names = read_image_names(
@@ -208,15 +243,20 @@ def main() -> None:
         print(f"\n=== {args.dataset} / {method_name}: {len(image_names)} images ===")
         report = run_gradient_analysis_dataset(
             image_iter,
-            tile_size=args.tile_size,
-            overlap=args.overlap,
+            tile_size=cfg.tile_size,
+            overlap=cfg.overlap,
             method_name=method_name,
             dataset=args.dataset,
-            channels=args.channels,
-            statistic=args.statistic,
-            alpha=args.alpha,
-            n_permutations=args.n_permutations,
-            random_seed=args.random_seed,
+            channels=cfg.channels,
+            statistic=cfg.statistic,
+            strip_width=cfg.strip_width,
+            block_size=cfg.block_size,
+            n_permutations=cfg.n_permutations,
+            alpha=cfg.alpha,
+            num_bins_per_tile=cfg.num_bins_per_tile,
+            random_seed=cfg.random_seed,
+            normalize_per_axis=cfg.normalize_per_axis,
+            balance_axis_counts=cfg.balance_axis_counts,
         )
         report.save(out_dir / f"{method_name}_gradient_report.json")
         reports[method_name] = report

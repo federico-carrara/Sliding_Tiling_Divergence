@@ -203,7 +203,7 @@ def main() -> int:
         random_seed=config.gradient_test.random_seed,
         normalize_per_axis=config.gradient_test.normalize_per_axis,
         balance_axis_counts=config.gradient_test.balance_axis_counts,
-        channel=config.gradient_test.channel,
+        channel=(config.gradient_test.channels[0] if config.gradient_test.channels else 0),
     )
 
     print(f"\nDone. Results saved to: {config.save_dir}")

@@ -49,8 +49,8 @@ class GradientTestConfig(BaseModel):
     balance_axis_counts : bool, default=True
         Subsample per tile so every owned-seam axis contributes an equal number of
         blocks. Only statistically valid alongside ``normalize_per_axis``.
-    channel : int, default=0
-        Channel index to analyse.
+    channels : list of int or None, default=None
+        Channel indices to analyse; ``None`` means all channels.
     """
 
     tile_size: list[PositiveInt]
@@ -64,7 +64,7 @@ class GradientTestConfig(BaseModel):
     random_seed: int = 0
     normalize_per_axis: bool = True
     balance_axis_counts: bool = True
-    channel: int = Field(default=0, ge=0)
+    channels: list[NonNegativeInt] | None = None
 
     @field_validator("n_permutations")
     @classmethod
