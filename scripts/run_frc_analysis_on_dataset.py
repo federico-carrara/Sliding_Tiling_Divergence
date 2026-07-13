@@ -86,8 +86,8 @@ def parse_args() -> argparse.Namespace:
     # FRC geometry / parameters.
     p.add_argument(
         "--ndim",
-        type=int,
-        default=2,
+        required=True,
+        type=int, 
         choices=[2, 3],
         help="Spatial dimensionality; 3-D volumes are scored per z-slice.",
     )
@@ -97,13 +97,6 @@ def parse_args() -> argparse.Namespace:
         nargs="+",
         default=None,
         help="Channel indices to analyse (default: all channels).",
-    )
-    p.add_argument(
-        "--no_window",
-        dest="apply_window",
-        action="store_false",
-        default=True,
-        help="Disable the 2-D Hamming window (sanity tests only).",
     )
     p.add_argument(
         "--max_images",
@@ -209,7 +202,7 @@ def main() -> None:
             method_name=method_name,
             dataset=args.dataset,
             channels=args.channels,
-            apply_window=args.apply_window,
+            apply_window=True,
         )
         report.save(out_dir / f"{method_name}_frc_report.json")
         reports[method_name] = report
