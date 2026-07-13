@@ -14,9 +14,13 @@ from analysis_pipeline.frc.aggregation import (
     FRCImageReport,
     FRCMethodReport,
     FRCMultiMethodReport,
+    aggregate_image,
     aggregate_method,
 )
-from analysis_pipeline.frc.analysis import run_frc_analysis
+from analysis_pipeline.frc.analysis import (
+    run_frc_analysis,
+    run_frc_analysis_dataset,
+)
 from analysis_pipeline.frc.comparison import run_frc_analysis_multi
 from analysis_pipeline.frc.frc import per_image_frc
 from analysis_pipeline.frc.windowing import apply_hamming_window_2d
@@ -26,9 +30,11 @@ __all__ = [
     "FRCImageReport",
     "FRCMethodReport",
     "FRCMultiMethodReport",
+    "aggregate_image",
     "aggregate_method",
     "apply_hamming_window_2d",
     "per_image_frc",
     "run_frc_analysis",
+    "run_frc_analysis_dataset",
     "run_frc_analysis_multi",
 ]

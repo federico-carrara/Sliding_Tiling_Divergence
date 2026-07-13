@@ -92,11 +92,11 @@ def run_frc_analysis_multi(
             gt,
             save_dir=None,
             method_name=name,
-            channel=channel,
+            channels=[channel],
             apply_window=apply_window,
         )
 
-    _print_summary(report, method_names)
+    _print_summary(report, method_names, channel)
 
     if save_dir is not None:
         out_path = report.save(Path(save_dir) / "frc_report.json")
@@ -106,7 +106,7 @@ def run_frc_analysis_multi(
 
 
 def _print_summary(
-    report: FRCMultiMethodReport, method_names: list[str]
+    report: FRCMultiMethodReport, method_names: list[str], channel: int
 ) -> None:
     """Print a human-readable summary of a multi-method FRC report.
 
@@ -116,11 +116,14 @@ def _print_summary(
         Report to summarise.
     method_names : list of str
         Methods to display, in display order.
+    channel : int
+        Channel index whose per-method mean curve is summarised (``mean_frc``
+        is keyed by channel).
     """
     bar = "=" * 60
     print()
     print(bar)
-    print("FRC METRIC SUMMARY")
+    print(f"FRC METRIC SUMMARY (channel {channel})")
     print(bar)
     print(
         f"{'Method':<25s} {'n_images':>10s} {'mean FRC':>12s} {'FRC[Nyq]':>10s}"
@@ -128,10 +131,11 @@ def _print_summary(
     print("-" * 60)
     for name in method_names:
         m = report.methods[name]
+        curve = m.mean_frc.get(channel, np.array([], dtype=np.float64))
         body_mean = (
-            float(np.nanmean(m.mean_frc[1:])) if m.mean_frc.size > 1 else float("nan")
+            float(np.nanmean(curve[1:])) if curve.size > 1 else float("nan")
         )
-        nyq = float(m.mean_frc[-1]) if m.mean_frc.size else float("nan")
+        nyq = float(curve[-1]) if curve.size else float("nan")
         print(
             f"{name:<25s} {m.n_images:>10d} {body_mean:>12.4f} {nyq:>10.4f}"
         )

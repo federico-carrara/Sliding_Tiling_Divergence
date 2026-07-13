@@ -139,7 +139,7 @@ def main() -> int:
         ground_truths=ground_truth,
         save_dir=config.save_dir,
         method_name=method_name,
-        channel=config.frc.channel,
+        channels=[config.frc.channel],
         apply_window=config.frc.apply_window,
     )
 
