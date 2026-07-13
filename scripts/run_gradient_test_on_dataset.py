@@ -4,10 +4,12 @@ Experimental driver, argparse-based so it can be launched from a SLURM job.
 
 Data layout (see ``playground.ipynb``): for a dataset ``D`` each method stores a
 single ``predictions.npz`` whose keys are image names and whose arrays squeeze to
-``(C, H, W)``; the matching ground truth lives at
-``{data_root}/{D}/targets/test/{image_name}.tif``. Images within a dataset may
-differ in size, so we test them one at a time (``N=1``) and merge the per-image
-reports into one :class:`MethodReport` per method.
+channel-first ``(C, H, W)`` (2-D) or ``(C, D, H, W)`` (3-D) — the spatial
+dimensionality is inferred from the number of ``--tile_size`` entries; the
+matching ground truth lives at ``{data_root}/{D}/targets/test/{image_name}.tif``.
+Images within a dataset may differ in size, so we test them one at a time
+(``N=1``) and merge the per-image reports into one :class:`MethodReport` per
+method.
 
 Outputs (under ``{output_root}/{dataset}``):
 - ``{method}_gradient_report.json`` — the full per-method report (nested
@@ -148,13 +150,21 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def _ensure_chw(arr: np.ndarray) -> np.ndarray:
-    """Squeeze to ``(C, H, W)``, promoting a bare ``(H, W)`` to a single channel."""
+def _ensure_channel_first(arr: np.ndarray, n_spatial: int) -> np.ndarray:
+    """Squeeze to channel-first ``(C, *spatial)`` for the given spatial ndim.
+
+    ``n_spatial`` is 2 for 2-D ``(C, H, W)`` or 3 for 3-D ``(C, D, H, W)``. 
+    A bare spatial array with no channel axis (``(H, W)`` / ``(D, H, W)``) is
+    promoted to a single channel.
+    """
     arr = np.asarray(arr).squeeze()
-    if arr.ndim == 2:
+    if arr.ndim == n_spatial:
         arr = arr[np.newaxis, ...]
-    if arr.ndim != 3:
-        raise ValueError(f"expected (C, H, W) after squeeze, got shape {arr.shape}")
+    if arr.ndim != n_spatial + 1:
+        raise ValueError(
+            f"expected {n_spatial + 1}-D channel-first array after squeeze "
+            f"(n_spatial={n_spatial}), got shape {arr.shape}"
+        )
     return arr
 
 
@@ -166,16 +176,17 @@ def read_image_names(npz_path: Path, max_images: int | None) -> list[str]:
 
 
 def iter_prediction_images(
-    npz_path: Path, image_names: list[str]
+    npz_path: Path, image_names: list[str], n_spatial: int
 ) -> Iterator[tuple[str, np.ndarray]]:
-    """Lazily yield ``(name, (C, H, W))`` from a ``predictions.npz``.
+    """Lazily yield ``(name, (C, *spatial))`` from a ``predictions.npz``.
 
     ``.npz`` archives decompress each array only on access, so this keeps just
-    one image in memory at a time.
+    one image in memory at a time. ``n_spatial`` (2 or 3) selects the expected
+    channel-first layout ``(C, H, W)`` / ``(C, D, H, W)``.
     """
     with np.load(npz_path, allow_pickle=True) as data:
         for name in image_names:
-            yield name, _ensure_chw(data[name])
+            yield name, _ensure_channel_first(data[name], n_spatial)
 
 
 def _gt_filename(name: str) -> str:
@@ -189,11 +200,16 @@ def _gt_filename(name: str) -> str:
 
 
 def iter_gt_images(
-    target_dir: Path, image_names: list[str]
+    target_dir: Path, image_names: list[str], n_spatial: int
 ) -> Iterator[tuple[str, np.ndarray]]:
-    """Lazily yield ``(name, (C, H, W))`` ground truths, one file at a time."""
+    """Lazily yield ``(name, (C, *spatial))`` ground truths, one file at a time.
+
+    ``n_spatial`` (2 or 3) selects the expected channel-first layout.
+    """
     for name in image_names:
-        yield name, _ensure_chw(tiff.imread(target_dir / _gt_filename(name)))
+        yield name, _ensure_channel_first(
+            tiff.imread(target_dir / _gt_filename(name)), n_spatial
+        )
 
 
 def main() -> None:
@@ -201,6 +217,13 @@ def main() -> None:
     out_dir = args.output_root
     out_dir.mkdir(parents=True, exist_ok=True)
     pred_root = args.results_root / args.dataset / args.predictions_subdir
+
+    n_spatial = len(args.tile_size)
+    if len(args.overlap) != n_spatial:
+        raise ValueError(
+            f"tile_size has {n_spatial} entries but overlap has "
+            f"{len(args.overlap)}; both must list one value per spatial axis"
+        )
 
     cfg = GradientTestConfig(
         tile_size=list(args.tile_size),
@@ -229,14 +252,16 @@ def main() -> None:
         (
             name, 
             iter_prediction_images(
-                pred_root / METHODS_TO_SUBDIR[name] / "predictions.npz", image_names
+                pred_root / METHODS_TO_SUBDIR[name] / "predictions.npz",
+                image_names,
+                n_spatial,
             )
         )
         for name  in args.methods
     ]
     if args.include_gt:
         target_dir = args.data_root / args.dataset / "targets" / "test"
-        sources.append(("GT", iter_gt_images(target_dir, image_names)))
+        sources.append(("GT", iter_gt_images(target_dir, image_names, n_spatial)))
 
     reports: dict[str, MethodReport] = {}
     for method_name, image_iter in sources:
