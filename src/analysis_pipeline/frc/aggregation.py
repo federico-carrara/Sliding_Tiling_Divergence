@@ -23,6 +23,8 @@ from pydantic import (
 )
 from typing_extensions import Self
 
+from analysis_pipeline.frc.reduction import frc_resolution, frc_resolution_period
+
 
 def _to_ndarray(value: Any) -> np.ndarray:
     """Coerce a value (e.g. a JSON list) to a float64 array on load."""
@@ -177,9 +179,12 @@ class FRCMethodReport(_FRCReportModel):
         """Flatten to one summary record per ``(image_id, channel)``.
 
         Each row carries the method/dataset identifiers plus scalar summaries of
-        the channel's FRC curve: the mean FRC excluding the DC bin and the value
-        at the Nyquist bin. Suitable for direct construction of a
-        :class:`pandas.DataFrame`.
+        the channel's FRC curve: the mean FRC excluding the DC bin, and the
+        resolution readout — the frequency where the curve first falls below the
+        conventional ``1/7`` threshold, reported both in cycles/pixel and as the
+        matching period in pixels (see
+        :func:`analysis_pipeline.frc.reduction.frc_resolution`). Suitable for
+        direct construction of a :class:`pandas.DataFrame`.
 
         Returns
         -------
@@ -193,7 +198,6 @@ class FRCMethodReport(_FRCReportModel):
                 body_mean = (
                     float(np.nanmean(frc[1:])) if frc.size > 1 else float("nan")
                 )
-                nyquist = float(frc[-1]) if frc.size else float("nan")
                 records.append(
                     {
                         "dataset": self.dataset,
@@ -201,7 +205,8 @@ class FRCMethodReport(_FRCReportModel):
                         "image_id": image_id,
                         "channel": channel,
                         "frc_mean_excl_dc": body_mean,
-                        "frc_nyquist": nyquist,
+                        "frc_res_cyc_per_px": frc_resolution(ch.freqs, frc),
+                        "frc_res_period_px": frc_resolution_period(ch.freqs, frc),
                         "n_bins": int(frc.size),
                     }
                 )

@@ -23,6 +23,11 @@ from analysis_pipeline.frc.analysis import (
 )
 from analysis_pipeline.frc.comparison import run_frc_analysis_multi
 from analysis_pipeline.frc.frc import per_image_frc
+from analysis_pipeline.frc.reduction import (
+    FRC_THRESHOLD_1_7,
+    frc_resolution,
+    frc_resolution_period,
+)
 from analysis_pipeline.frc.windowing import apply_hamming_window_2d
 
 __all__ = [
@@ -30,9 +35,12 @@ __all__ = [
     "FRCImageReport",
     "FRCMethodReport",
     "FRCMultiMethodReport",
+    "FRC_THRESHOLD_1_7",
     "aggregate_image",
     "aggregate_method",
     "apply_hamming_window_2d",
+    "frc_resolution",
+    "frc_resolution_period",
     "per_image_frc",
     "run_frc_analysis",
     "run_frc_analysis_dataset",

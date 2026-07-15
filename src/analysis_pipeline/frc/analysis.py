@@ -29,6 +29,7 @@ from analysis_pipeline.frc.aggregation import (
     aggregate_method,
 )
 from analysis_pipeline.frc.frc import per_image_frc
+from analysis_pipeline.frc.reduction import frc_resolution
 
 
 def _resolve_channels(
@@ -160,10 +161,11 @@ def run_frc_analysis_dataset(
             body_mean = (
                 float(np.nanmean(mean_frc[1:])) if mean_frc.size > 1 else float("nan")
             )
-            nyquist = float(mean_frc[-1]) if mean_frc.size else float("nan")
+            f_c = frc_resolution(method_report.freqs, mean_frc)
             print(
                 f"  -> {method_name} [c{c}]: n_images={method_report.n_images}, "
-                f"mean FRC (excl. DC)={body_mean:.4f}, FRC[Nyquist]={nyquist:.4f}"
+                f"mean FRC (excl. DC)={body_mean:.4f}, "
+                f"resolution (FRC=1/7)={f_c:.4f} cyc/px"
             )
 
     if save_dir is not None:

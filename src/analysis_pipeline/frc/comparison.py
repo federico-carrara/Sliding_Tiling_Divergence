@@ -15,6 +15,7 @@ import numpy as np
 
 from analysis_pipeline.frc.aggregation import FRCMultiMethodReport
 from analysis_pipeline.frc.analysis import run_frc_analysis
+from analysis_pipeline.frc.reduction import frc_resolution
 
 
 def run_frc_analysis_multi(
@@ -126,7 +127,7 @@ def _print_summary(
     print(f"FRC METRIC SUMMARY (channel {channel})")
     print(bar)
     print(
-        f"{'Method':<25s} {'n_images':>10s} {'mean FRC':>12s} {'FRC[Nyq]':>10s}"
+        f"{'Method':<25s} {'n_images':>10s} {'mean FRC':>12s} {'res[cyc/px]':>12s}"
     )
     print("-" * 60)
     for name in method_names:
@@ -135,8 +136,8 @@ def _print_summary(
         body_mean = (
             float(np.nanmean(curve[1:])) if curve.size > 1 else float("nan")
         )
-        nyq = float(curve[-1]) if curve.size else float("nan")
+        f_c = frc_resolution(m.freqs, curve)
         print(
-            f"{name:<25s} {m.n_images:>10d} {body_mean:>12.4f} {nyq:>10.4f}"
+            f"{name:<25s} {m.n_images:>10d} {body_mean:>12.4f} {f_c:>12.4f}"
         )
     print(bar)
