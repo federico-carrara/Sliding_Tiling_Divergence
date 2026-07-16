@@ -528,8 +528,9 @@ def plot_significance_overlay(
         The figure handle.
     """
     image = np.asarray(image)
+    channel_report = image_report.channels[channel]
     pmap = _build_tile_pvalue_map(
-        image_report.channels[channel], image.shape, tile_size, overlap
+        channel_report, image.shape, tile_size, overlap
     )
     img2d, pmap2d = _select_2d(image, pmap, z_idx)
     full_hw = (img2d.shape[0], img2d.shape[1])
@@ -576,6 +577,24 @@ def plot_significance_overlay(
     cbar.ax.tick_params(colors=text_color)
     if title:
         ax.set_title(title, fontsize=14, color=text_color)
+
+    # stats box in the top-left corner of the overlay panel
+    stats_text = (
+        f"mean Z = {channel_report.mean_Z:.2f}\n"
+        f"median Z = {channel_report.median_Z:.2f}\n"
+        f"frac rejected = {channel_report.frac_rejected:.3f}"
+    )
+    ax.text(
+        0.03,
+        0.97,
+        stats_text,
+        transform=ax.transAxes,
+        ha="left",
+        va="top",
+        fontsize=11,
+        color="white",
+        bbox=dict(boxstyle="round", facecolor="black", alpha=0.6, edgecolor="none"),
+    )
 
     if show_gradient:
         grad_img, symmetric = grad2d
