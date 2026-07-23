@@ -172,7 +172,9 @@ def main() -> int:
         )
 
     plot_path = config.save_dir / "frc_curves.png"
-    plot_frc_curves(report, tile_inner_sizes_map, save_path=plot_path)
+    plot_frc_curves(
+        list(report.methods.values()), tile_inner_sizes_map, save_path=plot_path
+    )
     print(f"\nHeadline plot saved to: {plot_path}")
 
     print(f"\nDone. Results saved to: {config.save_dir}")

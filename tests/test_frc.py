@@ -14,7 +14,8 @@ import sys
 import numpy as np
 
 from analysis_pipeline.frc import (
-    FRCImageResult,
+    FRCChannelResult,
+    aggregate_image,
     aggregate_method,
     per_image_frc,
 )
@@ -97,10 +98,21 @@ def test_aggregation_toy() -> None:
     noise = 0.05 * rng.standard_normal(base.shape)
     curves = base + noise
 
-    images = [
-        FRCImageResult(freqs=freqs.copy(), frc=curves[i], image_shape=(64, 64))
+    # One single-channel (channel 0) image report per curve, keyed by image id.
+    images = {
+        str(i): aggregate_image(
+            str(i),
+            {
+                0: FRCChannelResult(
+                    channel=0,
+                    freqs=freqs.copy(),
+                    frc=curves[i],
+                    image_shape=(64, 64),
+                )
+            },
+        )
         for i in range(n_images)
-    ]
+    }
     rep = aggregate_method(images)
 
     _expect(rep.n_images == n_images, f"n_images={rep.n_images} != {n_images}")
@@ -109,9 +121,14 @@ def test_aggregation_toy() -> None:
         "aggregated freqs grid does not match input",
     )
 
+    # mean_frc / ci95_* are keyed by channel index; this dataset has channel 0.
+    mean_frc = rep.mean_frc[0]
+    ci95_lo = rep.ci95_lo[0]
+    ci95_hi = rep.ci95_hi[0]
+
     # Mean should be very close to bin_index * 0.1 with 20 samples and std 0.05.
     expected_mean = np.arange(6) * 0.1
-    mean_err = np.max(np.abs(rep.mean_frc - expected_mean))
+    mean_err = np.max(np.abs(mean_frc - expected_mean))
     _expect(
         mean_err < 0.05,
         f"aggregated mean deviates: max|mean - expected| = {mean_err:.3f}",
@@ -120,7 +137,7 @@ def test_aggregation_toy() -> None:
     # CI half-width should be 1.96 * 0.05 / sqrt(20) ≈ 0.0219, within
     # sampling noise of that.
     expected_hw = 1.96 * 0.05 / np.sqrt(n_images)
-    hw = (rep.ci95_hi - rep.ci95_lo) / 2.0
+    hw = (ci95_hi - ci95_lo) / 2.0
     hw_err = float(np.max(np.abs(hw - expected_hw)))
     _expect(
         hw_err < 0.015,

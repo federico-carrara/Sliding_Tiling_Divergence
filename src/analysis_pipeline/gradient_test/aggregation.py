@@ -90,9 +90,11 @@ class TileResult(_ReportModel):
         observed statistic in units of the tile's own null spread, making it
         comparable across tiles and images (``nan`` for skipped tiles).
     n_seam_samples : int
-        Total number of seam samples used in the test.
+        Total number of seam samples used in the test (post axis-count balancing,
+        when enabled).
     n_control_samples : int
-        Total number of control samples used in the test.
+        Total number of control samples used in the test (post axis-count
+        balancing, when enabled).
     """
 
     coord: tuple[int, ...]

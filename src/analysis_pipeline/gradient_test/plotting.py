@@ -528,8 +528,9 @@ def plot_significance_overlay(
         The figure handle.
     """
     image = np.asarray(image)
+    channel_report = image_report.channels[channel]
     pmap = _build_tile_pvalue_map(
-        image_report.channels[channel], image.shape, tile_size, overlap
+        channel_report, image.shape, tile_size, overlap
     )
     img2d, pmap2d = _select_2d(image, pmap, z_idx)
     full_hw = (img2d.shape[0], img2d.shape[1])
@@ -576,6 +577,24 @@ def plot_significance_overlay(
     cbar.ax.tick_params(colors=text_color)
     if title:
         ax.set_title(title, fontsize=14, color=text_color)
+
+    # stats box in the top-left corner of the overlay panel
+    stats_text = (
+        f"mean Z = {channel_report.mean_Z:.2f}\n"
+        f"median Z = {channel_report.median_Z:.2f}\n"
+        f"frac rejected = {channel_report.frac_rejected:.3f}"
+    )
+    ax.text(
+        0.03,
+        0.97,
+        stats_text,
+        transform=ax.transAxes,
+        ha="left",
+        va="top",
+        fontsize=11,
+        color="white",
+        bbox=dict(boxstyle="round", facecolor="black", alpha=0.6, edgecolor="none"),
+    )
 
     if show_gradient:
         grad_img, symmetric = grad2d
@@ -807,7 +826,7 @@ def plot_flatness_stratified_rejection(
     n_bins: int = 8,
     bin_mode: str = "quantile",
     use_gradient_magnitude: bool = True,
-    log_x: bool = True,
+    log_x: bool = False,
     title: Optional[str] = None,
     facecolor: str = "white",
     save_path: Optional[Union[str, Path]] = None,
@@ -856,9 +875,10 @@ def plot_flatness_stratified_rejection(
         Define texture from the gradient magnitude (``True``, default) or the
         raw intensity (``False``).
     log_x : bool
-        Use a logarithmic texture axis. Default ``True``.
+        Use a logarithmic texture axis. Default ``False`` (linear).
     title : Optional[str]
-        Axis title. Default summarises the configuration.
+        Axis title. ``None`` (default) summarises the configuration; pass an
+        empty string ``""`` to draw no title at all.
     facecolor : str
         Figure background colour. Default ``"white"``.
     save_path : Optional[Union[str, Path]]
@@ -919,30 +939,14 @@ def plot_flatness_stratified_rejection(
             for b in range(n_actual_bins)
         ]
     )
-    bin_counts = np.array(
-        [int(np.sum(bin_idx == b)) for b in range(n_actual_bins)]
-    )
-
     text_color = "black" if facecolor == "white" else "white"
     fig, ax = plt.subplots(figsize=(8.0, 5.0), constrained_layout=True)
     fig.patch.set_facecolor(facecolor)
 
-    # faint tile-count histogram on a twin axis for context
-    ax_count = ax.twinx()
-    width = np.diff(edges)
-    ax_count.bar(
-        edges[:-1],
-        bin_counts,
-        width=width,
-        align="edge",
-        color="0.85",
-        edgecolor="0.7",
-        zorder=0,
-    )
-    ax_count.set_ylabel("tiles per bin", color="0.5")
-    ax_count.tick_params(axis="y", colors="0.5")
-    ax_count.set_zorder(ax.get_zorder() - 1)
-    ax.patch.set_visible(False)
+    # faint bin-edge guides (equal-count quantile bins, so an explicit count
+    # axis is redundant — the guides just show where the bins fall)
+    for e in edges:
+        ax.axvline(e, color="0.8", linewidth=0.8, zorder=0)
 
     cmap = plt.get_cmap("tab10")
     for mi, (name, ir) in enumerate(reports.items()):
@@ -985,26 +989,40 @@ def plot_flatness_stratified_rejection(
         color="red",
         linestyle="--",
         linewidth=1.2,
-        label=f"α = {alpha}",
+        label=rf"$\alpha = {alpha:g}$",
         zorder=1,
     )
     if log_x:
         ax.set_xscale("log")
+    else:
+        # crop the empty upper tail: quantile binning makes the last bin span a
+        # long sparse range, but the last plotted point sits well below its
+        # upper edge. Stop the axis just past the last point.
+        finite_bx = bin_x[np.isfinite(bin_x)]
+        if finite_bx.size:
+            span = finite_bx.max() - finite_bx.min()
+            ax.set_xlim(right=finite_bx.max() + 0.1 * span)
     tex_label = (
-        "per-tile gradient-magnitude std"
+        "gradient-magnitude std"
         if use_gradient_magnitude
-        else "per-tile intensity std"
+        else "intensity std"
     )
-    ax.set_xlabel(f"tile texture  ({tex_label}, from reference) →  flat to textured")
-    ax.set_ylabel("fraction of tiles rejected")
+    ax.set_xlabel(
+        f"tile texture — per-tile {tex_label} of the reference image "
+        f"(flat → textured)",
+        fontsize=14,
+    )
+    ax.set_ylabel("fraction of tiles rejected", fontsize=14)
+    ax.tick_params(axis="both", labelsize=12)
     ax.set_ylim(-0.02, 1.02)
-    ax.set_title(
-        title
-        or f"Rejection rate vs. tile texture  ({bin_mode} bins, n={len(coords)} tiles)",
-        color=text_color,
-    )
-    ax.legend(loc="upper right", framealpha=0.9)
-    ax.set_zorder(ax_count.get_zorder() + 1)
+    if title is None:
+        title = (
+            f"Rejection rate vs. tile texture  "
+            f"({bin_mode} bins, n={len(coords)} tiles)"
+        )
+    if title:  # pass title="" to suppress
+        ax.set_title(title, color=text_color)
+    ax.legend(loc="upper right", framealpha=0.9, fontsize=12)
 
     if save_path is not None:
         save_path = Path(save_path)

@@ -43,10 +43,14 @@ class GradientTestConfig(BaseModel):
         Number of histogram bins for binned statistics (KL, JS).
     random_seed : int, default=0
         RNG seed.
-    pool_z_with_xy : bool, default=True
-        If False (reserved for v2), run separate xy and z tests in 3D.
-    channel : int, default=0
-        Channel index to analyse.
+    normalize_per_axis : bool, default=True
+        Standardize gradients per axis by image-wide ``(mean, std)`` (seam+control
+        pooled) so gradients from all axes can be pooled into one test.
+    balance_axis_counts : bool, default=True
+        Subsample per tile so every owned-seam axis contributes an equal number of
+        blocks. Only statistically valid alongside ``normalize_per_axis``.
+    channels : list of int or None, default=None
+        Channel indices to analyse; ``None`` means all channels.
     """
 
     tile_size: list[PositiveInt]
@@ -58,8 +62,9 @@ class GradientTestConfig(BaseModel):
     alpha: float = Field(default=0.05, gt=0.0, lt=1.0)
     num_bins_per_tile: int = Field(default=32, ge=2)
     random_seed: int = 0
-    pool_z_with_xy: bool = True
-    channel: int = Field(default=0, ge=0)
+    normalize_per_axis: bool = True
+    balance_axis_counts: bool = True
+    channels: list[NonNegativeInt] | None = None
 
     @field_validator("n_permutations")
     @classmethod
@@ -98,14 +103,14 @@ class GradientTestConfig(BaseModel):
         ValueError
             If ``tile_size`` and ``overlap`` have different lengths, if any
             ``overlap[i] >= tile_size[i]``, or if any axis step is too small
-            for ``2 * strip_width + 2``.
+            for ``2 * strip_width + 1``.
         """
         if len(self.tile_size) != len(self.overlap):
             raise ValueError(
                 f"tile_size and overlap must have the same number of axes "
                 f"(got {len(self.tile_size)} vs {len(self.overlap)})"
             )
-        min_step = 2 * self.strip_width + 2
+        min_step = 2 * self.strip_width + 1
         for i, (t, o) in enumerate(zip(self.tile_size, self.overlap)):
             if o >= t:
                 raise ValueError(
@@ -115,7 +120,7 @@ class GradientTestConfig(BaseModel):
             if step < min_step:
                 raise ValueError(
                     f"axis {i}: step = tile_size - overlap = {step} < "
-                    f"{min_step} = 2*strip_width + 2. Lower strip_width or "
+                    f"{min_step} = 2*strip_width + 1. Lower strip_width or "
                     f"reduce overlap[{i}]."
                 )
         return self

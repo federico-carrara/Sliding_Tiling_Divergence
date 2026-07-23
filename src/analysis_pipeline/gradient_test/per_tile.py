@@ -18,10 +18,19 @@ from analysis_pipeline.gradient_test.aggregation import (
     aggregate_channel,
 )
 from analysis_pipeline.gradient_test.gradient_analysis import compute_gradients
+from analysis_pipeline.gradient_test.per_axis import (
+    AxisMoments,
+    balance_axis_blocks,
+    normalize_slices,
+)
 from analysis_pipeline.gradient_test.permutation import permutation_pvalue
-from analysis_pipeline.gradient_test.sampling import sample_tile
+from analysis_pipeline.gradient_test.sampling import (
+    TileGradientSample,
+    group_by_axis,
+    sample_tile,
+)
 from analysis_pipeline.gradient_test.statistics import StatisticName, get_statistic
-from analysis_pipeline.gradient_test.tiles import enumerate_tiles
+from analysis_pipeline.gradient_test.tiles import Tile, enumerate_tiles
 
 # Variance floor for the per-tile Z-score. In flat regions the permutation null
 # can collapse (``null_std ≈ 0``), which would make ``Z_obs`` explode; flooring
@@ -46,14 +55,14 @@ def _validate_step_vs_strip(
     Raises
     ------
     ValueError
-        If on any axis ``tile_size - overlap < 2 * strip_width + 2``.
+        If on any axis ``tile_size - overlap < 2 * strip_width + 1``.
     """
     for i, (ts, ov) in enumerate(zip(tile_size, overlap, strict=True)):
         step = ts - ov
-        if step < 2 * strip_width + 2:
+        if step < 2 * strip_width + 1:
             raise ValueError(
                 f"axis {i}: step = tile_size - overlap = {step} but strip_width="
-                f"{strip_width} requires step >= 2*N + 2 = {2 * strip_width + 2}. "
+                f"{strip_width} requires step >= 2*N + 1 = {2 * strip_width + 1}. "
                 "Lower --strip_width or use a smaller overlap."
             )
 
@@ -71,11 +80,21 @@ def per_image_tile_scan(
     num_bins_per_tile: int,
     rng: np.random.Generator,
     channel: int = 0,
+    normalize_per_axis: bool = True,
+    balance_axis_counts: bool = True,
 ) -> ChannelReport:
     """Run the per-tile test on one single-channel image slice.
 
     The caller is responsible for slicing the per-method ``(N, C, ...)``
     prediction down to the single-image, single-channel array we operate on.
+
+    When ``normalize_per_axis`` and/or ``balance_axis_counts`` are enabled the scan
+    runs in two passes: the first samples every kept tile and accumulates per-axis
+    ``(mean, std)`` over the whole image (seam and control pooled together); the
+    second normalizes each tile's samples by those per-axis statistics, optionally
+    subsamples so every axis contributes an equal number of blocks, and runs the
+    permutation test. Both corrections put the axes on a common footing so gradients
+    from all axes can be pooled into one seam-vs-control test.
 
     Parameters
     ----------
@@ -98,9 +117,16 @@ def per_image_tile_scan(
     num_bins_per_tile : int
         Histogram bin count for binned statistics (KL, JS).
     rng : numpy.random.Generator
-        Random generator for the permutation engine.
+        Random generator for the permutation engine and axis-count subsampling.
     channel : int, default=0
         Channel index this slice was taken from; stamped onto the result.
+    normalize_per_axis : bool, default=True
+        If True, standardize gradients per axis by image-wide ``(mean, std)``
+        (seam+control pooled) so cross-axis scale differences are removed.
+    balance_axis_counts : bool, default=True
+        If True, subsample per tile so every owned-seam axis contributes an equal
+        number of ``block_size`` blocks to the seam and control pools. Only
+        statistically valid alongside ``normalize_per_axis``.
 
     Returns
     -------
@@ -134,9 +160,13 @@ def per_image_tile_scan(
     if stat_spec.vec_kind == "binned":
         stat_kwargs["num_bins"] = num_bins_per_tile
 
+    # Pass 1: sample every kept tile once, caching the samples, and (when
+    # normalizing) accumulate image-wide per-axis moments over seam+control.
+    kept: list[tuple[Tile, TileGradientSample]] = []
+    moments = AxisMoments.zeros(image.ndim)
     tile_results: list[TileResult] = []
 
-    for tile in tqdm(tiles_list, desc="Running tests for tiles", unit="tile"):
+    for tile in tqdm(tiles_list, desc="Sampling tiles", unit="tile"):
         if tile.n_seams < 2:
             tile_results.append(
                 TileResult(
@@ -151,10 +181,43 @@ def per_image_tile_scan(
             continue
 
         sample = sample_tile(gradients, tile, strip_width)
+        kept.append((tile, sample))
+        if normalize_per_axis:
+            for s, a in zip(sample.seam_slices, sample.seam_axes):
+                moments.update(a, s)
+            for s, a in zip(sample.control_slices, sample.control_axes):
+                moments.update(a, s)
+
+    stats = moments.finalize() if normalize_per_axis else {}
+
+    # Pass 2: normalize + balance + run the permutation test per kept tile.
+    for tile, sample in tqdm(kept, desc="Running tests for tiles", unit="tile"):
+        seam_slices = sample.seam_slices
+        control_slices = sample.control_slices
+        if normalize_per_axis:
+            seam_slices = normalize_slices(seam_slices, sample.seam_axes, stats)
+            control_slices = normalize_slices(
+                control_slices, sample.control_axes, stats
+            )
+
+        if balance_axis_counts:
+            seam_in = balance_axis_blocks(
+                group_by_axis(seam_slices, sample.seam_axes),
+                block_size=block_size,
+                rng=rng,
+            )
+            control_in = balance_axis_blocks(
+                group_by_axis(control_slices, sample.control_axes),
+                block_size=block_size,
+                rng=rng,
+            )
+        else:
+            seam_in = seam_slices
+            control_in = control_slices
 
         T_obs, p, T_null = permutation_pvalue(
-            sample.seam_slices,
-            sample.control_slices,
+            seam_in,
+            control_in,
             stat_spec=stat_spec,
             block_size=block_size,
             n_permutations=n_permutations,
@@ -183,8 +246,8 @@ def per_image_tile_scan(
                 null_mean=null_mean,
                 null_std=null_std,
                 Z_obs=float(Z_obs),
-                n_seam_samples=int(sample.seam_sample.size),
-                n_control_samples=int(sample.control_sample.size),
+                n_seam_samples=int(sum(s.size for s in seam_in)),
+                n_control_samples=int(sum(s.size for s in control_in)),
             )
         )
 
