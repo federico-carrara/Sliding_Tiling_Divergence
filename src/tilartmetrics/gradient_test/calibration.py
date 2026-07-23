@@ -18,8 +18,8 @@ from typing import Optional, Sequence
 
 import numpy as np
 
-from analysis_pipeline.gradient_test.per_tile import per_image_tile_scan
-from analysis_pipeline.gradient_test.statistics import StatisticName
+from tilartmetrics.gradient_test.per_tile import per_image_tile_scan
+from tilartmetrics.gradient_test.statistics import StatisticName
 
 
 @dataclass

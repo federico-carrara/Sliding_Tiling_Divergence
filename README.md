@@ -1,13 +1,16 @@
-# Gradient Analysis Pipeline
+# Tilartmetrics
 
-A gradient-based analysis pipeline for comparing tiling methods in image prediction tasks.
+Metrics for **quantifying tiling (stitching) artifacts** in large images produced
+by tiled inference. Two complementary metrics ship today:
 
-## Features
-
-- **Multi-Method Comparison**: Compare 2-5 different prediction methods
-- **KL Divergence Analysis**: Quantify gradient consistency across tile boundaries
-- **Gradient Visualization**: Compare edge vs. middle tile gradients
-- **Flexible Configuration**: Support for 2D and 3D data with per-method tile sizes
+- **Gradient test** — a reference-free, per-tile permutation hypothesis test. For
+  each kept region of the TiledPatching grid it compares across-seam gradients to
+  a local control strip, yielding a per-tile statistic `T_tile` and p-value. Two
+  per-image scalars are reported: `median(T_tile)` and `frac_rejected` at α.
+- **FRC** — reference-based Fourier Ring Correlation against a ground truth. Per
+  image it computes the 2-D FRC curve and aggregates a per-frequency mean + 95%
+  CI across the test set; stitching artifacts show up as dips at the seam
+  harmonics `k / step`.
 
 ## Installation
 
@@ -15,103 +18,84 @@ A gradient-based analysis pipeline for comparing tiling methods in image predict
 pip install -e .
 ```
 
-## Quick Start
+## Data format
+
+Both CLIs consume **`.npz` archives whose keys are image names** and whose arrays
+squeeze to channel-first layout — `(C, H, W)` for 2-D or `(C, D, H, W)` for 3-D.
+Save your predictions (and, for FRC, your ground truths) that way, for example:
+
+```python
+import numpy as np
+np.savez("predictions.npz", **{image_name: array for image_name, array in images})
+```
+
+For FRC the ground-truth archive must be keyed by the **same image names** as the
+predictions (each prediction is paired with the ground truth under the same key).
+
+Each command runs **one method at a time** and writes one report; run it again per
+method to cover several.
+
+## Usage — gradient test
 
 ```bash
 analyze-experiment \
-    --dataset MyDataset \
-    --model_name microsplit \
-    --predictions "pred1.tiff,pred2.tiff,pred3.tiff" \
-    --method_names "Method1,Method2,Method3" \
-    --save_dir ./results \
-    --inner_tile_size 32 \
-    --bins 200 \
-    --padding 48
+    --predictions predictions.npz \
+    --method_name inner_tiling \
+    --tile_size 64,64 --overlap 32,32 \
+    --statistic js \
+    --output_dir results/gradient_test
 ```
 
-## Output
+The spatial dimensionality is inferred from the number of `--tile_size` entries
+(`64,64` → 2-D, `16,64,64` → 3-D). The test is reference-free; to test a ground
+truth as a seam-free null baseline, run the command again with the ground-truth
+`.npz` as `--predictions` and `--method_name GT`.
 
-The analysis produces two files:
+Outputs under `--output_dir`: `gradient_test_config.json`,
+`{method_name}_gradient_report.json`, and `{method_name}_summary.csv`
+(one row per image × channel).
 
-1. **`gradient_histograms_all_methods.png`**: Visual comparison of edge vs. middle gradients for each method
-2. **`summary_kl_divergence.txt`**: KL divergence scores (lower = better gradient consistency)
+## Usage — FRC
 
-### Example Summary Output
-
-```
-============================================================
-GRADIENT ANALYSIS: KL DIVERGENCE SUMMARY
-============================================================
-
-KL Divergence KL(mid || edge) for Each Method:
-(Lower is Better - indicates more consistent gradients)
-------------------------------------------------------------
-  Method1                  : 0.123456  ❌ WORST
-  Method2                  : 0.045678
-  Method3                  : 0.012345  ✅ BEST
-
-============================================================
-Best Method (lowest KL): Method3
-KL Value: 0.012345
-============================================================
+```bash
+frc-experiment \
+    --predictions predictions.npz \
+    --ground_truth ground_truths.npz \
+    --method_name inner_tiling \
+    --ndim 2 \
+    --step 32 \
+    --output_dir results/frc
 ```
 
-**Interpretation**: Lower KL divergence indicates more uniform gradients between tile edges and middles, suggesting better tiling artifact reduction.
+3-D volumes (`--ndim 3`) are scored per z-slice. `--step` is the seam interval in
+pixels (e.g. `tile_size - overlap`); when given, dashed harmonic verticals `k/step`
+are drawn on the curve plots.
 
-## Usage Examples
+Outputs under `--output_dir`: `{method_name}_frc_report.json`,
+`{method_name}_summary.csv`, and `{method_name}_frc_curves_ch{c}.pdf` per channel.
 
-See [EXAMPLES.md](EXAMPLES.md) for detailed usage scenarios.
-
-## Command-Line Arguments
-
-| Argument | Description | Example |
-|----------|-------------|---------|
-| `--dataset` | Dataset name | `MyDataset` |
-| `--model_name` | Model type | `microsplit`, `usplit`, `HDN` |
-| `--predictions` | Comma-separated prediction files | `"pred1.tiff,pred2.tiff"` |
-| `--method_names` | Comma-separated method names | `"OG,SW"` |
-| `--save_dir` | Output directory | `./results` |
-| `--inner_tile_size` | Tile size specification | `32` or `"4,32,32;5,32,32"` |
-| `--bins` | Number of histogram bins | `200` |
-| `--padding` | Padding to remove | `48` or `"32,16,16"` |
-| `--channel` | Channel to analyze | `0` (or `2` for both channels) |
-
-## Tile Size Specifications
-
-| Format | Example | Description |
-|--------|---------|-------------|
-| Single int | `32` | Same 2D tile for all methods |
-| 3D same | `"5,32,32"` | Same 3D tile (Z,Y,X) for all |
-| Per-method 3D | `"4,32,32;5,32,32"` | Different tiles per method |
-
-**Tip**: Extract tile sizes from prediction filenames (e.g., `G5-32-32` → use `"5,32,32"`)
+Run either command with `--help` for the full list of parameters.
 
 ## Python API
 
 ```python
 from pathlib import Path
-from analysis_pipeline.gradient_test.analysis import run_gradient_analysis_multi
-from analysis_pipeline.utils import load_prediction, ensure_4d, remove_padding
+from tilartmetrics.gradient_test import run_gradient_analysis_dataset
+from tilartmetrics.utils import iter_npz_images, read_image_names
 
-# Load predictions
-predictions = []
-for file in ["pred1.tiff", "pred2.tiff"]:
-    pred = load_prediction(file)
-    pred = ensure_4d(remove_padding(pred, 48))
-    predictions.append(pred)
+names = read_image_names("predictions.npz")          # keys = image names
+images = iter_npz_images("predictions.npz", names, n_spatial=2)  # lazy (C, H, W)
 
-# Run analysis
-run_gradient_analysis_multi(
-    predictions_list=predictions,
-    method_names=["Original", "Modified"],
+report = run_gradient_analysis_dataset(
+    images,
+    tile_size=[64, 64],
+    overlap=[32, 32],
+    method_name="inner_tiling",
     save_dir=Path("./results"),
-    inner_tile_size=[32, 32],
-    bins=200,
-    channel=0,
 )
 ```
 
 ## Documentation
 
-- **[EXAMPLES.md](EXAMPLES.md)**: Comprehensive usage examples
 - **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)**: Command syntax cheat sheet
+- **[AGENTS.md](AGENTS.md)**: Architecture & internals

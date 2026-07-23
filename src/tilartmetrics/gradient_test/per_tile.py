@@ -12,25 +12,25 @@ from typing import Sequence
 import numpy as np
 from tqdm import tqdm
 
-from analysis_pipeline.gradient_test.aggregation import (
+from tilartmetrics.gradient_test.aggregation import (
     ChannelReport,
     TileResult,
     aggregate_channel,
 )
-from analysis_pipeline.gradient_test.gradient_analysis import compute_gradients
-from analysis_pipeline.gradient_test.per_axis import (
+from tilartmetrics.gradient_test.gradient_analysis import compute_gradients
+from tilartmetrics.gradient_test.per_axis import (
     AxisMoments,
     balance_axis_blocks,
     normalize_slices,
 )
-from analysis_pipeline.gradient_test.permutation import permutation_pvalue
-from analysis_pipeline.gradient_test.sampling import (
+from tilartmetrics.gradient_test.permutation import permutation_pvalue
+from tilartmetrics.gradient_test.sampling import (
     TileGradientSample,
     group_by_axis,
     sample_tile,
 )
-from analysis_pipeline.gradient_test.statistics import StatisticName, get_statistic
-from analysis_pipeline.gradient_test.tiles import Tile, enumerate_tiles
+from tilartmetrics.gradient_test.statistics import StatisticName, get_statistic
+from tilartmetrics.gradient_test.tiles import Tile, enumerate_tiles
 
 # Variance floor for the per-tile Z-score. In flat regions the permutation null
 # can collapse (``null_std ≈ 0``), which would make ``Z_obs`` explode; flooring

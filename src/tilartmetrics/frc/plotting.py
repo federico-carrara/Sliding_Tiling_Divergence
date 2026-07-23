@@ -18,8 +18,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import font_manager
 
-from analysis_pipeline.frc.aggregation import FRCMethodReport
-from analysis_pipeline.frc.reduction import FRC_THRESHOLD_1_7
+from tilartmetrics.frc.aggregation import FRCMethodReport
+from tilartmetrics.frc.reduction import FRC_THRESHOLD_1_7
 
 _GENERIC_FONT_FAMILIES = frozenset(
     {"serif", "sans-serif", "cursive", "fantasy", "monospace"}
@@ -178,7 +178,7 @@ def plot_frc_curves(
     threshold : float, optional, default=``1/7``
         Draw a horizontal dashed line at this FRC value — the resolution
         criterion each curve's crossing is read off (see
-        :data:`~analysis_pipeline.frc.reduction.FRC_THRESHOLD_1_7`). ``None``
+        :data:`~tilartmetrics.frc.reduction.FRC_THRESHOLD_1_7`). ``None``
         omits the line.
     ylim : tuple of float, optional
         Explicit ``(lo, hi)`` y-limits. Pass the same value for every channel of

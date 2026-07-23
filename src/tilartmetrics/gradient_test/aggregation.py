@@ -247,21 +247,6 @@ class MethodReport(_ReportModel):
         return records
 
 
-class MultiMethodReport(_ReportModel):
-    """Top-level result of a multi-method per-tile run.
-
-    Attributes
-    ----------
-    methods : dict of str to MethodReport
-        Per-method reports keyed by method name.
-    config_summary : dict, optional
-        Snapshot of the run configuration.
-    """
-
-    methods: dict[str, MethodReport] = Field(default_factory=dict)
-    config_summary: Optional[dict] = None
-
-
 def _median_and_frac(
     tiles: list[TileResult], alpha: float
 ) -> tuple[float, float]:

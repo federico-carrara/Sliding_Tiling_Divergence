@@ -33,8 +33,8 @@ matplotlib.use("Agg")
 import numpy as np
 import tifffile as tiff
 
-from analysis_pipeline.gradient_test.analysis import run_gradient_analysis
-from analysis_pipeline.gradient_test.plotting import (
+from tilartmetrics.gradient_test.analysis import run_gradient_analysis
+from tilartmetrics.gradient_test.plotting import (
     plot_flatness_stratified_rejection,
 )
 

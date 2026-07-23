@@ -9,32 +9,29 @@ is the inner tile size.
 See ``agents_artifacts/FRC_metric.md`` for the full spec.
 """
 
-from analysis_pipeline.frc.aggregation import (
+from tilartmetrics.frc.aggregation import (
     FRCChannelResult,
     FRCImageReport,
     FRCMethodReport,
-    FRCMultiMethodReport,
     aggregate_image,
     aggregate_method,
 )
-from analysis_pipeline.frc.analysis import (
+from tilartmetrics.frc.analysis import (
     run_frc_analysis,
     run_frc_analysis_dataset,
 )
-from analysis_pipeline.frc.comparison import run_frc_analysis_multi
-from analysis_pipeline.frc.frc import per_image_frc
-from analysis_pipeline.frc.reduction import (
+from tilartmetrics.frc.frc import per_image_frc
+from tilartmetrics.frc.reduction import (
     FRC_THRESHOLD_1_7,
     frc_resolution,
     frc_resolution_period,
 )
-from analysis_pipeline.frc.windowing import apply_hamming_window_2d
+from tilartmetrics.frc.windowing import apply_hamming_window_2d
 
 __all__ = [
     "FRCChannelResult",
     "FRCImageReport",
     "FRCMethodReport",
-    "FRCMultiMethodReport",
     "FRC_THRESHOLD_1_7",
     "aggregate_image",
     "aggregate_method",
@@ -44,5 +41,4 @@ __all__ = [
     "per_image_frc",
     "run_frc_analysis",
     "run_frc_analysis_dataset",
-    "run_frc_analysis_multi",
 ]

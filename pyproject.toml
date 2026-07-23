@@ -1,7 +1,7 @@
 [project]
-name = "analysis-pipeline"
+name = "tilartmetrics"
 version = "0.2.0"
-description = "Gradient-based analysis pipeline for comparing multiple prediction methods"
+description = "Gradient-based metrics for detecting tiling artifacts in image predictions"
 requires-python = ">=3.10"
 authors = [
     {name = "Analysis Team"}
@@ -34,18 +34,16 @@ dev = [
 ]
 
 [project.scripts]
-analyze-experiment = "analysis_pipeline.cli.analyze:main"
-analyze-experiment-multi = "analysis_pipeline.cli.analyze_multi:main"
-calibrate-block-size = "analysis_pipeline.cli.calibrate:main"
-frc-experiment = "analysis_pipeline.cli.frc_analyze:main"
-frc-experiment-multi = "analysis_pipeline.cli.frc_analyze_multi:main"
+analyze-experiment = "tilartmetrics.cli.analyze:main"
+calibrate-block-size = "tilartmetrics.cli.calibrate:main"
+frc-experiment = "tilartmetrics.cli.frc_analyze:main"
 
 [build-system]
 requires = ["setuptools>=65.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["analysis_pipeline"]
+packages = ["tilartmetrics"]
 package-dir = {"" = "src"}
 
 [tool.black]

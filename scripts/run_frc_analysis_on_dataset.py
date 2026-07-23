@@ -47,9 +47,9 @@ import numpy as np
 import pandas as pd
 import tifffile as tiff
 
-from analysis_pipeline.frc.aggregation import FRCMethodReport
-from analysis_pipeline.frc.analysis import run_frc_analysis_dataset
-from analysis_pipeline.frc.plotting import plot_frc_curves, shared_ylim
+from tilartmetrics.frc.aggregation import FRCMethodReport
+from tilartmetrics.frc.analysis import run_frc_analysis_dataset
+from tilartmetrics.frc.plotting import plot_frc_curves, shared_ylim
 
 
 METHODS_TO_SUBDIR = {

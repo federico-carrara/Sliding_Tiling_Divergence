@@ -26,7 +26,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from analysis_pipeline.gradient_test.tiles import Tile
+from tilartmetrics.gradient_test.tiles import Tile
 
 
 @dataclass

@@ -23,7 +23,7 @@ from pydantic import (
 )
 from typing_extensions import Self
 
-from analysis_pipeline.frc.reduction import frc_resolution, frc_resolution_period
+from tilartmetrics.frc.reduction import frc_resolution, frc_resolution_period
 
 
 def _to_ndarray(value: Any) -> np.ndarray:
@@ -183,7 +183,7 @@ class FRCMethodReport(_FRCReportModel):
         resolution readout — the frequency where the curve first falls below the
         conventional ``1/7`` threshold, reported both in cycles/pixel and as the
         matching period in pixels (see
-        :func:`analysis_pipeline.frc.reduction.frc_resolution`). Suitable for
+        :func:`tilartmetrics.frc.reduction.frc_resolution`). Suitable for
         direct construction of a :class:`pandas.DataFrame`.
 
         Returns
@@ -211,21 +211,6 @@ class FRCMethodReport(_FRCReportModel):
                     }
                 )
         return records
-
-
-class FRCMultiMethodReport(_FRCReportModel):
-    """Top-level result of a multi-method FRC run.
-
-    Attributes
-    ----------
-    methods : dict of str to FRCMethodReport
-        Per-method reports keyed by method name.
-    config_summary : dict, optional
-        Snapshot of the run configuration.
-    """
-
-    methods: dict[str, FRCMethodReport] = Field(default_factory=dict)
-    config_summary: Optional[dict] = None
 
 
 def _mean_and_ci95(

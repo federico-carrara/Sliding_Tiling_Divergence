@@ -4,7 +4,7 @@ Experimental driver (argparse only) implementing
 ``agents_artifacts/anisotropy_diagnostic_spec.md``. For each predicted volume we
 
 1. derive kept-region bounding boxes from ``(tile_size, overlap)`` via the
-   existing :func:`analysis_pipeline.gradient_test.tiles.enumerate_tiles`
+   existing :func:`tilartmetrics.gradient_test.tiles.enumerate_tiles`
    (Step 1);
 2. keep only regions whose centre falls in the central ``central_fraction`` of
    the volume along every axis (Step 2, no occupancy/signal filtering);
@@ -47,8 +47,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from analysis_pipeline.gradient_test.gradient_analysis import compute_gradients_3d
-from analysis_pipeline.gradient_test.tiles import Tile, enumerate_tiles
+from tilartmetrics.gradient_test.gradient_analysis import compute_gradients_3d
+from tilartmetrics.gradient_test.tiles import Tile, enumerate_tiles
 
 
 AXIS_LABELS = ("z", "y", "x")  # (D, H, W) spatial order

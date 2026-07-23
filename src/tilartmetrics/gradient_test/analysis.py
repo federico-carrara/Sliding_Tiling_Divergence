@@ -3,8 +3,7 @@
 :func:`run_gradient_analysis` is the single-image primitive: it takes one
 channel-first prediction ``(C, ...)`` and returns an :class:`ImageReport`.
 :func:`run_gradient_analysis_dataset` wraps it over an (optionally lazy)
-iterable of images and returns a :class:`MethodReport`. Multi-method comparison
-lives in :mod:`.comparison`.
+iterable of images and returns a :class:`MethodReport`.
 """
 
 from __future__ import annotations
@@ -14,15 +13,15 @@ from typing import Iterable, Mapping, Optional, Sequence
 
 import numpy as np
 
-from analysis_pipeline.gradient_test.aggregation import (
+from tilartmetrics.gradient_test.aggregation import (
     ChannelReport,
     ImageReport,
     MethodReport,
     aggregate_image,
     aggregate_method,
 )
-from analysis_pipeline.gradient_test.per_tile import per_image_tile_scan
-from analysis_pipeline.gradient_test.statistics import StatisticName
+from tilartmetrics.gradient_test.per_tile import per_image_tile_scan
+from tilartmetrics.gradient_test.statistics import StatisticName
 
 
 def run_gradient_analysis(

@@ -13,7 +13,7 @@ import sys
 
 import numpy as np
 
-from analysis_pipeline.frc import (
+from tilartmetrics.frc import (
     FRCChannelResult,
     aggregate_image,
     aggregate_method,

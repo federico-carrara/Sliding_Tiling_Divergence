@@ -27,7 +27,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from analysis_pipeline.gradient_test.permutation import _split_into_blocks
+from tilartmetrics.gradient_test.permutation import _split_into_blocks
 
 # Floor on the per-axis std, mirroring per_tile.Z_VAR_FLOOR: a flat axis
 # (std ~ 0) would otherwise blow up the normalized values.

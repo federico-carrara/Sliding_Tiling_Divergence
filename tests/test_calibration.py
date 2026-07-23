@@ -14,7 +14,7 @@ import sys
 
 import numpy as np
 
-from analysis_pipeline.gradient_test.calibration import calibrate_block_size
+from tilartmetrics.gradient_test.calibration import calibrate_block_size
 
 
 def main() -> None:

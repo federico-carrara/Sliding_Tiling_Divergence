@@ -10,8 +10,6 @@ Two entrypoints, mirroring the gradient-test package:
 - :func:`run_frc_analysis` — a convenience wrapper over stacked ``(N, C, H, W)``
   arrays that validates shapes and delegates to the streaming primitive. Used by
   the CLIs and notebooks.
-
-Multi-method comparison lives in :mod:`.comparison`.
 """
 
 from __future__ import annotations
@@ -21,15 +19,15 @@ from typing import Iterable, Optional, Sequence
 
 import numpy as np
 
-from analysis_pipeline.frc.aggregation import (
+from tilartmetrics.frc.aggregation import (
     FRCChannelResult,
     FRCImageReport,
     FRCMethodReport,
     aggregate_image,
     aggregate_method,
 )
-from analysis_pipeline.frc.frc import per_image_frc
-from analysis_pipeline.frc.reduction import frc_resolution
+from tilartmetrics.frc.frc import per_image_frc
+from tilartmetrics.frc.reduction import frc_resolution
 
 
 def _resolve_channels(
@@ -80,7 +78,7 @@ def run_frc_analysis_dataset(
 
     All images must share the same spatial size: the per-method mean curve + CI
     are pooled per frequency bin, which requires a common frequency grid.
-    :func:`analysis_pipeline.frc.aggregation.aggregate_method` raises a clear
+    :func:`tilartmetrics.frc.aggregation.aggregate_method` raises a clear
     ``ValueError`` if the sizes differ.
 
     If ``save_dir`` is not None, the report is serialized as JSON to

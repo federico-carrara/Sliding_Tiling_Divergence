@@ -29,9 +29,9 @@ class GradientTestConfig(BaseModel):
         TiledPatching tile size per spatial axis (image-pixel units).
     overlap : list of int
         TiledPatching overlap per spatial axis (image-pixel units).
-    statistic : {"kl", "js", "ks", "wasserstein", "mean_abs_ratio"}, default="kl"
+    statistic : {"kl", "js", "ks", "wasserstein", "mean_abs_ratio"}, default="js"
         Two-sample discrepancy statistic.
-    strip_width : int, default=4
+    strip_width : int, default=2
         Half-width ``N`` of the control strip around each seam.
     block_size : int, default=3
         Contiguous-block size ``B`` for the permutation engine.
@@ -55,8 +55,8 @@ class GradientTestConfig(BaseModel):
 
     tile_size: list[PositiveInt]
     overlap: list[NonNegativeInt]
-    statistic: Statistic = "kl"
-    strip_width: int = Field(default=4, ge=1)
+    statistic: Statistic = "js"
+    strip_width: int = Field(default=2, ge=1)
     block_size: int = Field(default=3, ge=1)
     n_permutations: int = Field(default=1000, ge=1)
     alpha: float = Field(default=0.05, gt=0.0, lt=1.0)

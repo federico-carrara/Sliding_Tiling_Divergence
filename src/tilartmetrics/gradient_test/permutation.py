@@ -27,7 +27,7 @@ from typing import Optional
 
 import numpy as np
 
-from analysis_pipeline.gradient_test.statistics import StatisticSpec
+from tilartmetrics.gradient_test.statistics import StatisticSpec
 
 
 EPS = 1e-12

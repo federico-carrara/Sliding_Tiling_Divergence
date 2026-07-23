@@ -18,8 +18,8 @@ from pathlib import Path
 
 import numpy as np
 
-from analysis_pipeline.gradient_test.calibration import calibrate_block_size
-from analysis_pipeline.utils import ensure_4d, load_prediction
+from tilartmetrics.gradient_test.calibration import calibrate_block_size
+from tilartmetrics.utils import ensure_4d, load_prediction
 
 
 def _parse_csv_ints(value: str) -> list[int]:

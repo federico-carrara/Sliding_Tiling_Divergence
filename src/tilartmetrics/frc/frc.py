@@ -20,8 +20,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from analysis_pipeline.frc.aggregation import FRCChannelResult
-from analysis_pipeline.frc.windowing import apply_hamming_window_2d
+from tilartmetrics.frc.aggregation import FRCChannelResult
+from tilartmetrics.frc.windowing import apply_hamming_window_2d
 
 
 def per_image_frc(

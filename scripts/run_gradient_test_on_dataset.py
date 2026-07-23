@@ -33,9 +33,9 @@ import numpy as np
 import pandas as pd
 import tifffile as tiff
 
-from analysis_pipeline.config import GradientTestConfig
-from analysis_pipeline.gradient_test.aggregation import MethodReport
-from analysis_pipeline.gradient_test.analysis import run_gradient_analysis_dataset
+from tilartmetrics.config import GradientTestConfig
+from tilartmetrics.gradient_test.aggregation import MethodReport
+from tilartmetrics.gradient_test.analysis import run_gradient_analysis_dataset
 
 
 METHODS_TO_SUBDIR = {

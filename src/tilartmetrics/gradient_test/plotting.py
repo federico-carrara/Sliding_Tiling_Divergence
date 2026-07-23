@@ -1,7 +1,7 @@
 """Visualisation helpers for the gradient test.
 
 Side-by-side comparison of finite-difference gradients produced by
-:func:`analysis_pipeline.gradient_test.gradient_analysis.compute_gradients`
+:func:`tilartmetrics.gradient_test.gradient_analysis.compute_gradients`
 across several methods (e.g. inner tiling vs. SWiTi). The figure is laid out
 as a grid with one column per method and one row per gradient axis, so that
 the same axis is compared horizontally and the contrast is matched per row.
@@ -17,14 +17,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 from numpy.typing import NDArray
 
-from analysis_pipeline.gradient_test.aggregation import (
+from tilartmetrics.gradient_test.aggregation import (
     ChannelReport,
     ImageReport,
     MethodReport,
     TileResult,
 )
-from analysis_pipeline.gradient_test.seams import compute_seam_positions
-from analysis_pipeline.gradient_test.tiles import enumerate_tiles
+from tilartmetrics.gradient_test.seams import compute_seam_positions
+from tilartmetrics.gradient_test.tiles import enumerate_tiles
 
 
 def _default_axis_names(n_axes: int) -> tuple[str, ...]:
@@ -243,9 +243,9 @@ def _build_tile_pvalue_map(
 ) -> NDArray:
     """Paint each tile's p-value onto a pixel-space array.
 
-    A :class:`~analysis_pipeline.gradient_test.aggregation.TileResult` stores a
+    A :class:`~tilartmetrics.gradient_test.aggregation.TileResult` stores a
     grid ``coord``, not a pixel location. This helper rebuilds the tile geometry
-    with :func:`~analysis_pipeline.gradient_test.tiles.enumerate_tiles` (which
+    with :func:`~tilartmetrics.gradient_test.tiles.enumerate_tiles` (which
     yields per-axis ``(lo, hi)`` pixel ranges) and fills every pixel of a tile's
     rectangle with that tile's Phipson–Smyth p-value. Skipped tiles
     (``n_seams < 2``) keep ``NaN`` because their ``p`` is already ``NaN``.
