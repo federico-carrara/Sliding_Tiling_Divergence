@@ -18,12 +18,12 @@ import sys
 
 import numpy as np
 
-from analysis_pipeline.gradient_test.per_axis import (
+from tilartmetrics.gradient_test.per_axis import (
     AxisMoments,
     balance_axis_blocks,
     normalize_slices,
 )
-from analysis_pipeline.gradient_test.per_tile import per_image_tile_scan
+from tilartmetrics.gradient_test.per_tile import per_image_tile_scan
 
 
 def test_balance_equalizes_block_counts() -> None:

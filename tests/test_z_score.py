@@ -20,14 +20,14 @@ from pathlib import Path
 
 import numpy as np
 
-from analysis_pipeline.gradient_test.aggregation import (
+from tilartmetrics.gradient_test.aggregation import (
     MethodReport,
     TileResult,
     aggregate_channel,
     aggregate_image,
     aggregate_method,
 )
-from analysis_pipeline.gradient_test.per_tile import per_image_tile_scan
+from tilartmetrics.gradient_test.per_tile import per_image_tile_scan
 
 
 def _valid_Z(report) -> np.ndarray:

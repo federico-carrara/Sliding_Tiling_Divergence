@@ -22,12 +22,13 @@ Quick commands:
 /localscratch/miniforge3/envs/sliding_tiling_env/bin/python tests/test_calibration.py
 /localscratch/miniforge3/envs/sliding_tiling_env/bin/python tests/test_frc.py
 
-# Dataset-driver smoke (the current primary entry points)
+# Console CLIs (general, one method per invocation over a single .npz)
+/localscratch/miniforge3/envs/sliding_tiling_env/bin/python -m tilartmetrics.cli.gradient_test --help
+/localscratch/miniforge3/envs/sliding_tiling_env/bin/python -m tilartmetrics.cli.frc --help
+
+# Dataset-driver smoke (experiment sweeps)
 /localscratch/miniforge3/envs/sliding_tiling_env/bin/python scripts/run_gradient_test_on_dataset.py --help
 /localscratch/miniforge3/envs/sliding_tiling_env/bin/python scripts/run_frc_analysis_on_dataset.py --help
-
-# NOTE: the console CLIs (analysis_pipeline.cli.*) are currently BROKEN — they import the
-# removed config/analysis.py loaders. Left non-functional on purpose; use the drivers above.
 ```
 
 If a dep is missing, `pip install <pkg>` inside the env — don't switch to another env.
@@ -40,31 +41,28 @@ Reference-free: only the stitched prediction and the TiledPatching `(tile_size, 
 
 Entry points:
 
-Two metrics ship today. The **primary way to run either on a real dataset is the argparse
-drivers in `scripts/`** (see the `scripts/` + `hpc/` layout below and "Running on a dataset"),
-built on the streaming Python APIs. The console CLIs (`*-experiment`) are **currently broken** —
-they still import the removed `config/analysis.py` loaders (`AnalysisConfig` /
-`FRCAnalysisConfig`), left non-functional on purpose until reworked. Use the drivers or the Python
-APIs directly.
+Two metrics ship today. There are two ways to run each: the general **console CLIs**
+(`run-gradient-test` / `compute-frc`), which run **one method per invocation** over a
+single `.npz` archive keyed by image name; and the dataset-specific **argparse drivers in
+`scripts/`** (see the `scripts/` + `hpc/` layout below and "Running on a dataset"), which sweep a
+whole experiment. Both are built on the same streaming Python APIs.
 
 - **Gradient test** (reference-free, per-tile permutation hypothesis test):
-  - Dataset driver (primary): [scripts/run_gradient_test_on_dataset.py](scripts/run_gradient_test_on_dataset.py) → `run_gradient_analysis_dataset`.
-  - Python API: `run_gradient_analysis` (single image) / `run_gradient_analysis_dataset` (lazy dataset) in [src/analysis_pipeline/gradient_test/analysis.py](src/analysis_pipeline/gradient_test/analysis.py); multi-method `run_gradient_analysis_multi` in [src/analysis_pipeline/gradient_test/comparison.py](src/analysis_pipeline/gradient_test/comparison.py).
-  - CLI `analyze-experiment` / `analyze-experiment-multi` → [cli/analyze.py](src/analysis_pipeline/cli/analyze.py), [cli/analyze_multi.py](src/analysis_pipeline/cli/analyze_multi.py) — **broken** (see above).
+  - CLI (general): `run-gradient-test` → [cli/gradient_test.py](src/tilartmetrics/cli/gradient_test.py). One method, one prediction `.npz`.
+  - Dataset driver (experiment sweeps): [scripts/run_gradient_test_on_dataset.py](scripts/run_gradient_test_on_dataset.py) → `run_gradient_analysis_dataset`.
+  - Python API: `run_gradient_analysis` (single image) / `run_gradient_analysis_dataset` (lazy dataset) in [src/tilartmetrics/gradient_test/analysis.py](src/tilartmetrics/gradient_test/analysis.py).
 - **FRC** (reference-based, 2-D Fourier Ring Correlation vs. ground truth):
-  - Dataset driver (primary): [scripts/run_frc_analysis_on_dataset.py](scripts/run_frc_analysis_on_dataset.py) → `run_frc_analysis_dataset`. 3-D volumes are scored per z-slice.
-  - Python API: `run_frc_analysis` (stacked `(N,C,H,W)`) / `run_frc_analysis_dataset` (lazy iterator of `(id, pred, gt)`) in [src/analysis_pipeline/frc/analysis.py](src/analysis_pipeline/frc/analysis.py); multi-method `run_frc_analysis_multi` in [src/analysis_pipeline/frc/comparison.py](src/analysis_pipeline/frc/comparison.py). Spec: [agents_artifacts/FRC_metric.md](agents_artifacts/FRC_metric.md).
-  - CLI `frc-experiment` / `frc-experiment-multi` → [cli/frc_analyze.py](src/analysis_pipeline/cli/frc_analyze.py), [cli/frc_analyze_multi.py](src/analysis_pipeline/cli/frc_analyze_multi.py) — **broken** (see above).
+  - CLI (general): `compute-frc` → [cli/frc.py](src/tilartmetrics/cli/frc.py). One method; prediction + ground-truth `.npz` keyed by the same image names; 3-D scored per z-slice.
+  - Dataset driver (experiment sweeps): [scripts/run_frc_analysis_on_dataset.py](scripts/run_frc_analysis_on_dataset.py) → `run_frc_analysis_dataset`. 3-D volumes are scored per z-slice.
+  - Python API: `run_frc_analysis` (stacked `(N,C,H,W)`) / `run_frc_analysis_dataset` (lazy iterator of `(id, pred, gt)`) in [src/tilartmetrics/frc/analysis.py](src/tilartmetrics/frc/analysis.py). Spec: [agents_artifacts/FRC_metric.md](agents_artifacts/FRC_metric.md).
 
 ## Layout
 
 ```
-src/analysis_pipeline/
+src/tilartmetrics/
 ├── cli/
-│   ├── analyze.py            # single-method per-tile CLI (primary API)
-│   ├── analyze_multi.py      # multi-method per-tile comparison CLI
-│   ├── frc_analyze.py        # single-method FRC CLI (primary API)
-│   └── frc_analyze_multi.py  # multi-method FRC comparison CLI
+│   ├── analyze.py            # per-tile CLI (primary API)
+│   └── frc_analyze.py        # FRC CLI (primary API)
 ├── config/
 │   └── gradient.py           # GradientTestConfig (per-tile permutation params)
 ├── gradient_test/            # per-tile permutation hypothesis test (reference-free)
@@ -75,21 +73,16 @@ src/analysis_pipeline/
 │   ├── permutation.py        # vectorized block-permutation engine
 │   ├── aggregation.py        # TileResult / ImageReport / MethodReport dataclasses
 │   ├── per_tile.py           # per-image orchestrator (one slice in, one report out)
-│   ├── analysis.py           # single-method orchestrator (primary API)
-│   ├── comparison.py         # multi-method wrapper (builds on analysis.py)
+│   ├── analysis.py           # dataset orchestrator (primary API)
 │   └── gradient_analysis.py  # compute_gradients_{2d,3d} helpers only
 ├── frc/                      # Fourier Ring Correlation vs. GT (reference-based)
 │   ├── windowing.py          # 2-D Hamming window — mandatory pre-FFT taper
 │   ├── frc.py                # per-image FRC curve (FFT + radial bincount)
-│   ├── aggregation.py        # FRCChannelResult / FRCImageReport / FRCMethodReport / FRCMultiMethodReport
+│   ├── aggregation.py        # FRCChannelResult / FRCImageReport / FRCMethodReport
 │   ├── analysis.py           # run_frc_analysis (stacked) + run_frc_analysis_dataset (lazy iterator)
-│   ├── comparison.py         # multi-method wrapper (builds on analysis.py)
 │   ├── plotting.py           # mean curve + 95% CI bands + harmonic verticals
 │   ├── reduction.py          # frc_to_scalar — stub, raises NotImplementedError (§3.7)
 │   └── fsc.py                # 3-D FSC — stub only (§5)
-├── legacy/                   # quarantined — pre-rewrite helpers, kept for v2 reuse
-│   ├── metrics.py            # legacy KL/Wiener helpers
-│   └── plotting.py           # legacy histogram/KL-heatmap figures
 └── utils/
     ├── array_utils.py        # ensure_4d (channel-first)
     └── file_utils.py         # load_prediction (.pkl / .tiff)
@@ -113,7 +106,7 @@ hpc/                          # SLURM array wrappers around the dataset drivers
 
 ### 1. Geometry (no detection)
 
-The TiledPatching geometry is supplied by the user (`--tile_size 64,64 --overlap 32,32` etc.); seams are derived analytically in [src/analysis_pipeline/gradient_test/seams.py](src/analysis_pipeline/gradient_test/seams.py) — closed form lifted from `careamics/dataset/patching/tiled_patching.py::_compute_1d_coords`:
+The TiledPatching geometry is supplied by the user (`--tile_size 64,64 --overlap 32,32` etc.); seams are derived analytically in [src/tilartmetrics/gradient_test/seams.py](src/tilartmetrics/gradient_test/seams.py) — closed form lifted from `careamics/dataset/patching/tiled_patching.py::_compute_1d_coords`:
 
 - `step = tile_size - overlap`, `M = overlap // 2`
 - `N = ceil((axis_size - overlap) / step)` tiles per axis
@@ -147,7 +140,7 @@ Fast paths:
 
 Per image: `median(T_tile)` and `frac_rejected = mean(p_tile < α)`. Per method: mean of both across images. NaN tiles (fewer than 2 owned seams) excluded.
 
-Reports are pydantic models with NaN-safe JSON `save`/`load` (`model_dump_json`), **not** pickle. The single-method orchestrator returns a `MethodReport` and, if `save_dir` is set, writes `save_dir/{method_name}_per_tile_report.json`; the multi-method wrapper returns a `MultiMethodReport` → `save_dir/per_tile_report.json`. The `scripts/` dataset drivers additionally emit `{method}_gradient_report.json` + a `summary.csv` (`to_records()`).
+Reports are pydantic models with NaN-safe JSON `save`/`load` (`model_dump_json`), **not** pickle. The orchestrator returns a `MethodReport` and, if `save_dir` is set, writes `save_dir/{method_name}_per_tile_report.json`. The `scripts/` dataset drivers additionally emit `{method}_gradient_report.json` + a `summary.csv` (`to_records()`).
 
 ## How FRC works
 
@@ -161,16 +154,16 @@ The ring sums are vectorised with three `np.bincount` calls over a precomputed r
 
 Per method, images are aggregated per-frequency-bin with `np.nanmean` and a 95% CI of `± 1.96 · std / sqrt(n)`. The Fisher-z transform is left as a deferred optional refinement (see `agents_artifacts/FRC_metric.md` §3.5).
 
-Stitching artifacts show up as dips at the seam harmonics `k/step`, where `step` is the method's seam interval in pixels (`tile_size - overlap` for inner tiling; the sliding stride for SWITi, whose seams are dimmer but still periodic) and `k = 1, 2, …, step//2` is the harmonic index — a periodic train of sharp seams puts energy at every integer multiple of the fundamental `1/step`, up to Nyquist. The headline plot in [src/analysis_pipeline/frc/plotting.py](src/analysis_pipeline/frc/plotting.py) draws dashed verticals at those locations, per method, when the driver's `--step` is provided (one entry per `--methods`, `none` for a seam-free method).
+Stitching artifacts show up as dips at the seam harmonics `k/step`, where `step` is the method's seam interval in pixels (`tile_size - overlap` for inner tiling; the sliding stride for SWITi, whose seams are dimmer but still periodic) and `k = 1, 2, …, step//2` is the harmonic index — a periodic train of sharp seams puts energy at every integer multiple of the fundamental `1/step`, up to Nyquist. The headline plot in [src/tilartmetrics/frc/plotting.py](src/tilartmetrics/frc/plotting.py) draws dashed verticals at those locations, per method, when the driver's `--step` is provided (one entry per `--methods`, `none` for a seam-free method).
 
 **Resolution readout.** `reduction.frc_resolution` returns the frequency where the curve first falls below the conventional `1/7 ≈ 0.143` threshold (DC bin skipped, NaN rings ignored, crossing refined by linear interpolation); `frc_resolution_period` is its reciprocal in pixels. Higher crossing frequency = finer detail still faithful to GT. `NaN` means either "never crosses" (correlated to the band edge) or "already below at the first non-DC bin" (no correlated band at all — e.g. pure noise). Caveat: the 1/7 criterion is derived for FRC between two *independent equally-noisy half-datasets*; here we correlate prediction vs. a clean GT (a fidelity curve), so treat the crossing as a **conventional cutoff for ranking methods on the same data**, not a physical instrument resolution.
 
-The seam-artifact scalar `frc_to_scalar` and the 3-D `fsc` module remain intentional stubs (see [src/analysis_pipeline/frc/reduction.py](src/analysis_pipeline/frc/reduction.py) and [src/analysis_pipeline/frc/fsc.py](src/analysis_pipeline/frc/fsc.py)). Reports save as NaN-safe JSON (`FRCMethodReport.save`/`.load`), not pickle: `run_frc_analysis` writes `save_dir/{method_name}_frc_report.json`, and the `scripts/run_frc_analysis_on_dataset.py` driver adds a `summary.csv` (`to_records()`: per `(image, channel)` `frc_mean_excl_dc`, `frc_res_cyc_per_px`, `frc_res_period_px`, `n_bins`).
+The seam-artifact scalar `frc_to_scalar` and the 3-D `fsc` module remain intentional stubs (see [src/tilartmetrics/frc/reduction.py](src/tilartmetrics/frc/reduction.py) and [src/tilartmetrics/frc/fsc.py](src/tilartmetrics/frc/fsc.py)). Reports save as NaN-safe JSON (`FRCMethodReport.save`/`.load`), not pickle: `run_frc_analysis` writes `save_dir/{method_name}_frc_report.json`, and the `scripts/run_frc_analysis_on_dataset.py` driver adds a `summary.csv` (`to_records()`: per `(image, channel)` `frc_mean_excl_dc`, `frc_res_cyc_per_px`, `frc_res_period_px`, `n_bins`).
 
 ## Conventions
 
 - Arrays are **channel-first**: 2-D `(N, C, H, W)`, 3-D `(N, C, D, H, W)`. `ensure_4d` inserts the channel axis at position 1 for 3-D inputs. Dimensionality is inferred from `predictions.ndim` (4 → 2-D, 5 → 3-D).
-- `tile_size` / `overlap` may be a flat per-axis list (`[64, 64]`) applied to every method, or a per-method nested list (`[[64, 64], [32, 32]]`) — broadcast in `_broadcast_per_method_spec` ([gradient_test/comparison.py](src/analysis_pipeline/gradient_test/comparison.py)) for the comparison entry point. The single-method API takes a flat per-axis list only.
+- `tile_size` / `overlap` are flat per-axis lists (`[64, 64]`), one entry per spatial axis.
 - 3-D z-direction is pooled with x/y by default. `pool_z_with_xy=False` is reserved for v2 and currently emits a warning while still pooling.
 - Single channel only per run; the legacy `--channel 2` magic-iterate-over-channels behaviour is removed. Call once per channel if you need multiple.
 
@@ -179,13 +172,15 @@ The seam-artifact scalar `frc_to_scalar` and the 3-D `fsc` module remain intenti
 - **Calibration under residual dependence** is the canary. If `tests/test_null_calibration.py` ever fails (`frac_rejected` significantly above α on a flat field), raise `block_size` from 3 to 5–7 before chasing anything else.
 - **Strip width vs. step**: `tile_size - overlap` must be ≥ `2*strip_width + 2`. Lower the strip width if you want overlap-heavy tilings.
 - **Dilution at low bias**: each interior tile pools across 4 (2-D) or 6 (3-D) owned seams; an artifact present on only one of them produces a signal diluted by ~3-5×. `tests/test_artifact_injection.py` works with a +2.0 bias for this reason.
-- **`legacy/plotting.py` and `legacy/metrics.py` are orphaned**, not deleted. They retain helpers (`plot_multiple_hist`, `compute_kl_matrix`, `wiener_entropy`, …) that may be reused when per-tile heatmaps and boxplots land in v2. No v1 code imports them; keep them quarantined.
+- **`legacy/` was deleted** (pre-rewrite `plotting.py`/`metrics.py` helpers: `plot_multiple_hist`, `compute_kl_matrix`, `wiener_entropy`, …). Recover them from git history if per-tile heatmaps or boxplots need them in v2.
 - **Pydantic 2 is required** (not v1 syntax). The `config/` modules use `model_validator(mode="after")`.
 
 ## Running it
 
-The current entry points are the **dataset-sweep drivers in `scripts/`** (the `*-experiment`
-console CLIs are broken — see Entry points). Both drivers share a data layout: per method a single
+For a single method, use the general console CLIs (`run-gradient-test` / `compute-frc`,
+one `.npz` per invocation — see Entry points). For whole-experiment sweeps, the
+**dataset-sweep drivers in `scripts/`** loop over several methods + GT. Both drivers share a
+data layout: per method a single
 `{results_root}/{dataset}/{predictions_subdir}/{method_subdir}/predictions.npz` (keys are image
 names, arrays squeeze to channel-first `(C,H,W)` / `(C,D,H,W)`) plus matching ground truths at
 `{data_root}/{dataset}/targets/test/{image}.tif`. Method→subdir map:
