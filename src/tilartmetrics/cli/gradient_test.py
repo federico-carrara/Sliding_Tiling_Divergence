@@ -25,7 +25,7 @@ Outputs (under ``--output_dir``)
 
 Example::
 
-    analyze-experiment \\
+    run-gradient-test \\
         --predictions preds.npz --method_name inner_tiling \\
         --tile_size 64,64 --overlap 32,32 --statistic js \\
         --output_dir results/gradient_test
@@ -162,26 +162,6 @@ def parse_args() -> argparse.Namespace:
         default=3,
         help="Contiguous-block size B for the permutation engine.",
     )
-    parser.add_argument(
-        "--num_bins_per_tile",
-        type=int,
-        default=32,
-        help="Histogram bins for binned statistics (KL, JS).",
-    )
-    parser.add_argument(
-        "--no_normalize_per_axis",
-        dest="normalize_per_axis",
-        action="store_false",
-        default=True,
-        help="Disable per-axis mean/std normalization of gradients before pooling.",
-    )
-    parser.add_argument(
-        "--no_balance_axis_counts",
-        dest="balance_axis_counts",
-        action="store_false",
-        default=True,
-        help="Disable per-axis count balancing (equal blocks per axis) within tiles.",
-    )
 
     return parser.parse_args()
 
@@ -205,10 +185,10 @@ def main() -> int:
             block_size=args.block_size,
             n_permutations=args.n_permutations,
             alpha=args.alpha,
-            num_bins_per_tile=args.num_bins_per_tile,
+            num_bins_per_tile=32,
             random_seed=args.random_seed,
-            normalize_per_axis=args.normalize_per_axis,
-            balance_axis_counts=args.balance_axis_counts,
+            normalize_per_axis=True,
+            balance_axis_counts=True,
             channels=args.channels,
         )
     except ValueError as e:

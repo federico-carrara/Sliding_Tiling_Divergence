@@ -89,12 +89,12 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--strip_width", type=int, default=4, help="Control strip half-width N."
+        "--strip_width", type=int, default=2, help="Control strip half-width N."
     )
     parser.add_argument(
         "--statistic",
         choices=["kl", "js", "ks", "wasserstein", "mean_abs_ratio"],
-        default="kl",
+        default="js",
         help="Two-sample statistic (must match test-time choice).",
     )
     parser.add_argument(
@@ -109,8 +109,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--block_sizes",
         type=_parse_csv_ints,
-        default=[1, 2, 4, 8, 16],
-        help="Candidate B values (CSV). Default: 1,2,4,8,16 (geometric doubling).",
+        required=True,
+        help="Candidate B values (CSV).",
     )
     parser.add_argument(
         "--n_seeds",
@@ -126,12 +126,6 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=1000,
         help="Permutations per tile (must match test-time setting).",
-    )
-    parser.add_argument(
-        "--num_bins_per_tile",
-        type=int,
-        default=32,
-        help="Histogram bins for binned statistics (KL, JS).",
     )
     parser.add_argument(
         "--channel", type=int, default=0, help="Channel index to analyze."
@@ -278,7 +272,7 @@ def main() -> int:
             strip_width=args.strip_width,
             statistic=args.statistic,
             n_permutations=args.n_permutations,
-            num_bins_per_tile=args.num_bins_per_tile,
+            num_bins_per_tile=32,
             alpha=args.alpha,
             tolerance=args.tolerance,
             candidate_block_sizes=args.block_sizes,
