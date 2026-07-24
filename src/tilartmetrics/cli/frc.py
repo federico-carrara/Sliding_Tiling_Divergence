@@ -22,7 +22,7 @@ Outputs (under ``--output_dir``)
 
 Example::
 
-    frc-experiment \\
+    compute-frc \\
         --predictions preds.npz --ground_truth gt.npz \\
         --method_name inner_tiling --ndim 2 \\
         --step 64 --output_dir results/frc

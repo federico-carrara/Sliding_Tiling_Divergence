@@ -38,7 +38,7 @@ method to cover several.
 ## Usage — gradient test
 
 ```bash
-analyze-experiment \
+run-gradient-test \
     --predictions predictions.npz \
     --method_name inner_tiling \
     --tile_size 64,64 --overlap 32,32 \
@@ -58,7 +58,7 @@ Outputs under `--output_dir`: `gradient_test_config.json`,
 ## Usage — FRC
 
 ```bash
-frc-experiment \
+compute-frc \
     --predictions predictions.npz \
     --ground_truth ground_truths.npz \
     --method_name inner_tiling \

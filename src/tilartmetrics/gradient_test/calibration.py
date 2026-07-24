@@ -6,7 +6,7 @@ measure ``frac_rejected`` on each, and pick the smallest ``B`` that
 controls Type I error at the desired ``alpha`` (within a small tolerance).
 
 Calibration is a once-per-dataset / per-tile-geometry step; the recommended
-``B`` is then passed to ``analyze-experiment --block_size <B>`` on the test
+``B`` is then passed to ``run-gradient-test --block_size <B>`` on the test
 set. No changes to the main pipeline — this module sits next to it and
 reuses :func:`per_image_tile_scan` as the only computational primitive.
 """

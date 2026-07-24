@@ -34,9 +34,9 @@ dev = [
 ]
 
 [project.scripts]
-analyze-experiment = "tilartmetrics.cli.analyze:main"
+run-gradient-test = "tilartmetrics.cli.gradient_test:main"
 calibrate-block-size = "tilartmetrics.cli.calibrate:main"
-frc-experiment = "tilartmetrics.cli.frc_analyze:main"
+compute-frc = "tilartmetrics.cli.frc:main"
 
 [build-system]
 requires = ["setuptools>=65.0", "wheel"]

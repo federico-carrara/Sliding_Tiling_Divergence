@@ -6,7 +6,7 @@ image, measures ``frac_rejected`` for each, and recommends the smallest
 ``B`` that controls Type I error at ``alpha + tolerance``.
 
 The recommended ``B`` should then be passed to
-``analyze-experiment --block_size <B>`` on the test set.
+``run-gradient-test --block_size <B>`` on the test set.
 """
 
 from __future__ import annotations
@@ -214,7 +214,7 @@ def _print_summary(report, save_dir: Path) -> None:
     else:
         print(f"Recommended block_size: {report.recommended_block_size}")
         print(
-            f"Use this with: analyze-experiment --block_size "
+            f"Use this with: run-gradient-test --block_size "
             f"{report.recommended_block_size} ..."
         )
     if any(c.frac_rejected_sd == 0.0 for c in report.candidates):

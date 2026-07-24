@@ -23,8 +23,8 @@ Quick commands:
 /localscratch/miniforge3/envs/sliding_tiling_env/bin/python tests/test_frc.py
 
 # Console CLIs (general, one method per invocation over a single .npz)
-/localscratch/miniforge3/envs/sliding_tiling_env/bin/python -m tilartmetrics.cli.analyze --help
-/localscratch/miniforge3/envs/sliding_tiling_env/bin/python -m tilartmetrics.cli.frc_analyze --help
+/localscratch/miniforge3/envs/sliding_tiling_env/bin/python -m tilartmetrics.cli.gradient_test --help
+/localscratch/miniforge3/envs/sliding_tiling_env/bin/python -m tilartmetrics.cli.frc --help
 
 # Dataset-driver smoke (experiment sweeps)
 /localscratch/miniforge3/envs/sliding_tiling_env/bin/python scripts/run_gradient_test_on_dataset.py --help
@@ -42,17 +42,17 @@ Reference-free: only the stitched prediction and the TiledPatching `(tile_size, 
 Entry points:
 
 Two metrics ship today. There are two ways to run each: the general **console CLIs**
-(`analyze-experiment` / `frc-experiment`), which run **one method per invocation** over a
+(`run-gradient-test` / `compute-frc`), which run **one method per invocation** over a
 single `.npz` archive keyed by image name; and the dataset-specific **argparse drivers in
 `scripts/`** (see the `scripts/` + `hpc/` layout below and "Running on a dataset"), which sweep a
 whole experiment. Both are built on the same streaming Python APIs.
 
 - **Gradient test** (reference-free, per-tile permutation hypothesis test):
-  - CLI (general): `analyze-experiment` → [cli/analyze.py](src/tilartmetrics/cli/analyze.py). One method, one prediction `.npz`.
+  - CLI (general): `run-gradient-test` → [cli/gradient_test.py](src/tilartmetrics/cli/gradient_test.py). One method, one prediction `.npz`.
   - Dataset driver (experiment sweeps): [scripts/run_gradient_test_on_dataset.py](scripts/run_gradient_test_on_dataset.py) → `run_gradient_analysis_dataset`.
   - Python API: `run_gradient_analysis` (single image) / `run_gradient_analysis_dataset` (lazy dataset) in [src/tilartmetrics/gradient_test/analysis.py](src/tilartmetrics/gradient_test/analysis.py).
 - **FRC** (reference-based, 2-D Fourier Ring Correlation vs. ground truth):
-  - CLI (general): `frc-experiment` → [cli/frc_analyze.py](src/tilartmetrics/cli/frc_analyze.py). One method; prediction + ground-truth `.npz` keyed by the same image names; 3-D scored per z-slice.
+  - CLI (general): `compute-frc` → [cli/frc.py](src/tilartmetrics/cli/frc.py). One method; prediction + ground-truth `.npz` keyed by the same image names; 3-D scored per z-slice.
   - Dataset driver (experiment sweeps): [scripts/run_frc_analysis_on_dataset.py](scripts/run_frc_analysis_on_dataset.py) → `run_frc_analysis_dataset`. 3-D volumes are scored per z-slice.
   - Python API: `run_frc_analysis` (stacked `(N,C,H,W)`) / `run_frc_analysis_dataset` (lazy iterator of `(id, pred, gt)`) in [src/tilartmetrics/frc/analysis.py](src/tilartmetrics/frc/analysis.py). Spec: [agents_artifacts/FRC_metric.md](agents_artifacts/FRC_metric.md).
 
@@ -177,7 +177,7 @@ The seam-artifact scalar `frc_to_scalar` and the 3-D `fsc` module remain intenti
 
 ## Running it
 
-For a single method, use the general console CLIs (`analyze-experiment` / `frc-experiment`,
+For a single method, use the general console CLIs (`run-gradient-test` / `compute-frc`,
 one `.npz` per invocation — see Entry points). For whole-experiment sweeps, the
 **dataset-sweep drivers in `scripts/`** loop over several methods + GT. Both drivers share a
 data layout: per method a single

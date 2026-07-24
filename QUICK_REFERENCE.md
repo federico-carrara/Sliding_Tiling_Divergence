@@ -7,7 +7,7 @@ command again per method to cover several.
 ## Gradient test (reference-free)
 
 ```bash
-analyze-experiment \
+run-gradient-test \
     --predictions predictions.npz \
     --method_name inner_tiling \
     --tile_size 64,64 --overlap 32,32 \
@@ -28,7 +28,7 @@ analyze-experiment \
 ## FRC (reference-based)
 
 ```bash
-frc-experiment \
+compute-frc \
     --predictions predictions.npz \
     --ground_truth ground_truths.npz \
     --method_name inner_tiling \
@@ -58,8 +58,8 @@ frc-experiment \
 ## Tips
 
 ```bash
-analyze-experiment --help
-frc-experiment --help
+run-gradient-test --help
+compute-frc --help
 ```
 
 Save your arrays to `.npz` keyed by image name:
